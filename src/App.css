@@ -1,0 +1,222 @@
+* {
+  box-sizing: border-box;
+}
+
+button {
+  font: inherit;
+}
+
+.app {
+  min-height: 100vh;
+  background: #f4f6f5;
+  color: #17201b;
+}
+
+.topo {
+  background: #123c2d;
+  color: white;
+  padding: 36px 24px 72px;
+}
+
+.topo > div {
+  width: min(100%, 1100px);
+  margin: 0 auto;
+}
+
+.marca {
+  display: block;
+  margin-bottom: 22px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: #9ed5b8;
+}
+
+.topo h1 {
+  margin: 0 0 8px;
+  font-size: 34px;
+}
+
+.topo p {
+  margin: 0;
+  color: #d6e5dc;
+}
+
+.conteudo {
+  width: min(calc(100% - 32px), 1100px);
+  margin: -38px auto 0;
+  padding-bottom: 50px;
+}
+
+.card {
+  background: white;
+  border-radius: 18px;
+  box-shadow: 0 10px 30px rgba(18, 60, 45, 0.1);
+}
+
+.destaque {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 26px;
+}
+
+.etiqueta {
+  color: #268557;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 1.5px;
+}
+
+.destaque h2 {
+  margin: 6px 0;
+  font-size: 24px;
+}
+
+.destaque p {
+  margin: 0;
+  color: #68736d;
+}
+
+.botao-principal {
+  border: 0;
+  border-radius: 12px;
+  padding: 15px 22px;
+  background: #16834f;
+  color: white;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.botao-principal:hover {
+  background: #106a3f;
+}
+
+.titulo-secao {
+  margin: 34px 2px 16px;
+  font-size: 18px;
+}
+
+.grade {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+
+.card-menu {
+  min-height: 145px;
+  padding: 20px;
+  border: 1px solid #e4e9e6;
+  border-radius: 16px;
+  background: white;
+  text-align: left;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.card-menu:hover {
+  transform: translateY(-2px);
+  border-color: #a8cbb8;
+  box-shadow: 0 8px 22px rgba(18, 60, 45, 0.08);
+}
+
+.icone {
+  display: block;
+  margin-bottom: 14px;
+  font-size: 27px;
+}
+
+.card-menu strong {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 17px;
+}
+
+.card-menu small {
+  color: #738078;
+}
+
+@media (max-width: 720px) {
+  .topo {
+    padding: 28px 18px 65px;
+  }
+
+  .topo h1 {
+    font-size: 28px;
+  }
+
+  .conteudo {
+    width: min(calc(100% - 24px), 1100px);
+  }
+
+  .destaque {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .botao-principal {
+    width: 100%;
+  }
+
+  .grade {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .card-menu {
+    min-height: 135px;
+  }
+}
+
+@media (max-width: 430px) {
+  .grade {
+    grid-template-columns: 1fr;
+  }
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.pagina {
+  min-height: 100vh;
+  background: #f4f6f5;
+}
+
+.pagina-topo {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  min-height: 70px;
+  padding: 0 24px;
+  background: #123c2d;
+  color: white;
+}
+
+.pagina-topo span {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+}
+
+.voltar {
+  padding: 9px 13px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.1);
+  font-weight: 700;
+}
+
+.voltar:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.pagina-conteudo {
+  width: min(calc(100% - 32px), 1100px);
+  margin: 0 auto;
+  padding: 35px 0;
+}
+
+.pagina-conteudo h1 {
+  margin-top: 0;
+}

@@ -1,0 +1,1133 @@
+.nova-pelada-page {
+  width: 100%;
+}
+
+.nova-pelada-cabecalho {
+  margin-bottom: 22px;
+}
+
+.nova-pelada-cabecalho > span {
+  color: #16834f;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1.4px;
+}
+
+.nova-pelada-cabecalho h1 {
+  margin: 5px 0 0;
+  color: #173c2b;
+  font-size: 32px;
+}
+
+.nova-pelada-cabecalho p {
+  margin: 7px 0 0;
+  color: #6c7a72;
+}
+
+.nova-pelada-card {
+  margin-bottom: 16px;
+  padding: 20px;
+  border: 1px solid #dce8e0;
+  border-radius: 15px;
+  background: white;
+}
+
+.nova-pelada-etapa {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.nova-pelada-etapa > span {
+  display: flex;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #16834f;
+  color: white;
+  font-weight: 800;
+}
+
+.nova-pelada-etapa strong,
+.nova-pelada-etapa small {
+  display: block;
+}
+
+.nova-pelada-etapa strong {
+  color: #294537;
+  font-size: 16px;
+}
+
+.nova-pelada-etapa small {
+  margin-top: 3px;
+  color: #7c8981;
+  line-height: 1.4;
+}
+
+.nova-pelada-campo label {
+  display: block;
+  margin-bottom: 7px;
+  color: #294537;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.nova-pelada-campo input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 13px;
+  border: 1px solid #cedbd2;
+  border-radius: 9px;
+  outline: none;
+  font-size: 15px;
+}
+
+.nova-pelada-lista {
+  width: 100%;
+  min-height: 280px;
+  box-sizing: border-box;
+  padding: 14px;
+  border: 1px solid #cedbd2;
+  border-radius: 10px;
+  outline: none;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.nova-pelada-lista:focus,
+.nova-pelada-campo input:focus {
+  border-color: #16834f;
+}
+
+.btn-analisar-pelada,
+.btn-continuar-pelada {
+  width: 100%;
+  padding: 13px;
+  border: 0;
+  border-radius: 10px;
+  background: #16834f;
+  color: white;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.btn-analisar-pelada {
+  margin-top: 12px;
+}
+
+.nova-pelada-resumo {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.nova-pelada-resumo > div {
+  padding: 15px 8px;
+  border: 1px solid #dce8e0;
+  border-radius: 11px;
+  background: #f7faf8;
+  text-align: center;
+}
+
+.nova-pelada-resumo strong,
+.nova-pelada-resumo span {
+  display: block;
+}
+
+.nova-pelada-resumo strong {
+  color: #145c39;
+  font-size: 27px;
+}
+
+.nova-pelada-resumo span {
+  margin-top: 3px;
+  color: #718077;
+  font-size: 12px;
+}
+
+.nova-pelada-grupos {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.grupo-jogadores {
+  overflow: hidden;
+  border: 1px solid #dce8e0;
+  border-radius: 12px;
+}
+
+.grupo-jogadores-titulo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 13px 14px;
+  background: #f4f8f5;
+}
+
+.grupo-jogadores-titulo strong {
+  color: #294537;
+}
+
+.grupo-jogadores-titulo span {
+  min-width: 27px;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: #e2f0e7;
+  color: #14623c;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.jogador-previsto {
+  padding: 10px 14px;
+  border-top: 1px solid #edf2ee;
+  color: #536159;
+  font-size: 14px;
+}
+
+.nova-pelada-observacao {
+  margin: 16px 0;
+  padding: 14px 16px;
+  border-left: 4px solid #16834f;
+  border-radius: 8px;
+  background: #edf7f1;
+}
+
+.nova-pelada-observacao strong {
+  color: #145c39;
+}
+
+.nova-pelada-observacao p {
+  margin: 4px 0 0;
+  color: #68776e;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+@media (max-width: 700px) {
+  .nova-pelada-card {
+    padding: 16px;
+  }
+
+  .nova-pelada-grupos {
+    grid-template-columns: 1fr;
+  }
+
+  .nova-pelada-resumo {
+    gap: 6px;
+  }
+
+  .nova-pelada-resumo > div {
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+}
+
+.reconhecimento-resumo {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.reconhecimento-resumo > div {
+  padding: 14px 8px;
+  border: 1px solid #dce8e0;
+  border-radius: 11px;
+  text-align: center;
+}
+
+.reconhecimento-resumo strong,
+.reconhecimento-resumo span {
+  display: block;
+}
+
+.reconhecimento-resumo strong {
+  font-size: 25px;
+}
+
+.reconhecimento-resumo span {
+  margin-top: 3px;
+  font-size: 11px;
+}
+
+.reconhecimento-ok {
+  background: #f0f8f3;
+  color: #14623c;
+}
+
+.reconhecimento-novo {
+  background: #fff8e8;
+  color: #8a6100;
+}
+
+.reconhecimento-ambiguo {
+  background: #fff2ee;
+  color: #9b503d;
+}
+
+.lista-reconhecimento {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.item-reconhecimento {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(180px, 1fr);
+  gap: 15px;
+  align-items: center;
+  padding: 13px 15px;
+  border: 1px solid #dce8e0;
+  border-radius: 11px;
+  background: white;
+}
+
+.item-reconhecimento.reconhecido {
+  border-left: 4px solid #16834f;
+}
+
+.item-reconhecimento.nao_reconhecido {
+  border-left: 4px solid #d5a323;
+}
+
+.item-reconhecimento.ambiguo {
+  border-left: 4px solid #c76d55;
+}
+
+.reconhecimento-identidade strong,
+.reconhecimento-identidade span,
+.reconhecimento-resultado strong,
+.reconhecimento-resultado small {
+  display: block;
+}
+
+.reconhecimento-identidade strong {
+  color: #294537;
+  font-size: 15px;
+}
+
+.reconhecimento-identidade span {
+  margin-top: 4px;
+  color: #78867e;
+  font-size: 12px;
+}
+
+.reconhecimento-resultado {
+  text-align: right;
+}
+
+.reconhecimento-resultado strong {
+  margin-top: 3px;
+  color: #294537;
+}
+
+.reconhecimento-resultado small {
+  margin-top: 2px;
+  color: #7d8982;
+}
+
+.status-reconhecido,
+.status-nao-reconhecido,
+.status-ambiguo {
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.status-reconhecido {
+  color: #16834f;
+}
+
+.status-nao-reconhecido {
+  color: #a67809;
+}
+
+.status-ambiguo {
+  color: #b05e48;
+}
+
+.reconhecimento-aviso,
+.reconhecimento-sucesso {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 10px;
+}
+
+.reconhecimento-aviso {
+  background: #fff8e8;
+}
+
+.reconhecimento-aviso strong {
+  color: #805f10;
+}
+
+.reconhecimento-sucesso {
+  background: #edf7f1;
+}
+
+.reconhecimento-sucesso strong {
+  color: #145c39;
+}
+
+.reconhecimento-aviso p,
+.reconhecimento-sucesso p {
+  margin: 4px 0 0;
+  color: #68776e;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+@media (max-width: 700px) {
+  .item-reconhecimento {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .reconhecimento-resultado {
+    text-align: left;
+  }
+
+  .reconhecimento-resumo {
+    gap: 6px;
+  }
+}
+
+.btn-identificar-jogador {
+  margin-top: 8px;
+  padding: 7px 12px;
+  border: 1px solid #16834f;
+  border-radius: 7px;
+  background: white;
+  color: #16834f;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.btn-identificar-jogador:hover {
+  background: #edf7f1;
+}
+
+.identificacao-overlay {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(12, 31, 21, 0.58);
+}
+
+.identificacao-modal {
+  width: 100%;
+  max-width: 520px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 20px;
+  border-radius: 16px;
+  background: white;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.2);
+}
+
+.identificacao-modal-cabecalho {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 15px;
+}
+
+.identificacao-modal-cabecalho span {
+  color: #16834f;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.identificacao-modal-cabecalho h2 {
+  margin: 3px 0 0;
+  color: #244333;
+  font-size: 25px;
+}
+
+.btn-fechar-identificacao {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: #f1f5f2;
+  color: #506158;
+  font-size: 22px;
+  cursor: pointer;
+}
+
+.identificacao-explicacao {
+  margin: 17px 0 12px;
+  color: #69776f;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.identificacao-opcoes {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.identificacao-opcao {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 13px;
+  border: 1px solid #d8e3dc;
+  border-radius: 11px;
+  background: white;
+  text-align: left;
+  cursor: pointer;
+}
+
+.identificacao-opcao:hover {
+  border-color: #8dbba2;
+  background: #f7faf8;
+}
+
+.identificacao-opcao.selecionada {
+  border: 2px solid #16834f;
+  background: #edf7f1;
+}
+
+.identificacao-radio {
+  color: #16834f;
+  font-size: 20px;
+  line-height: 20px;
+}
+
+.identificacao-dados {
+  display: block;
+}
+
+.identificacao-dados strong,
+.identificacao-dados small {
+  display: block;
+}
+
+.identificacao-dados strong {
+  color: #244333;
+  font-size: 15px;
+}
+
+.identificacao-dados small {
+  margin-top: 3px;
+  color: #748078;
+  font-size: 12px;
+}
+
+.identificacao-sem-opcoes {
+  margin-top: 16px;
+  padding: 14px;
+  border-radius: 10px;
+  background: #fff8e8;
+}
+
+.identificacao-sem-opcoes strong {
+  color: #805f10;
+}
+
+.identificacao-sem-opcoes p {
+  margin: 4px 0 0;
+  color: #756b50;
+  font-size: 13px;
+}
+
+.btn-adicionar-novo-identificacao {
+  width: 100%;
+  margin-top: 14px;
+  padding: 11px;
+  border: 1px dashed #9bada2;
+  border-radius: 9px;
+  background: #fafcfb;
+  color: #40594b;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.identificacao-acoes {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 18px;
+  padding-top: 15px;
+  border-top: 1px solid #edf1ee;
+}
+
+.btn-cancelar-identificacao,
+.btn-confirmar-identificacao {
+  padding: 10px 17px;
+  border-radius: 8px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.btn-cancelar-identificacao {
+  border: 1px solid #d5ddd8;
+  background: white;
+  color: #66746c;
+}
+
+.btn-confirmar-identificacao {
+  border: 0;
+  background: #16834f;
+  color: white;
+}
+
+.btn-confirmar-identificacao:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+@media (max-width: 600px) {
+  .identificacao-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .identificacao-modal {
+    max-width: none;
+    max-height: 92vh;
+    border-radius: 18px 18px 0 0;
+  }
+
+  .identificacao-acoes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* =========================
+   ETAPA 5 - PRESENÇA
+   ========================= */
+
+.presenca-card {
+  scroll-margin-top: 18px;
+}
+
+.presenca-resumo {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.presenca-resumo > div {
+  padding: 15px 8px;
+  border: 1px solid #dce8e0;
+  border-radius: 11px;
+  background: #f7faf8;
+  text-align: center;
+}
+
+.presenca-resumo strong,
+.presenca-resumo span {
+  display: block;
+}
+
+.presenca-resumo strong {
+  color: #145c39;
+  font-size: 27px;
+}
+
+.presenca-resumo span {
+  margin-top: 3px;
+  color: #718077;
+  font-size: 12px;
+}
+
+.presenca-observacao {
+  margin-bottom: 16px;
+  padding: 13px 15px;
+  border-left: 4px solid #16834f;
+  border-radius: 9px;
+  background: #edf7f1;
+}
+
+.presenca-observacao strong {
+  color: #145c39;
+}
+
+.presenca-observacao p {
+  margin: 4px 0 0;
+  color: #68776e;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.presenca-grupos {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.presenca-grupo {
+  overflow: hidden;
+  border: 1px solid #dce8e0;
+  border-radius: 12px;
+  background: white;
+}
+
+.presenca-grupo-titulo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 13px 14px;
+  background: #f4f8f5;
+}
+
+.presenca-grupo-titulo strong {
+  color: #294537;
+}
+
+.presenca-grupo-titulo span {
+  min-width: 27px;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: #e2f0e7;
+  color: #14623c;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.presenca-jogador {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 13px;
+  border-top: 1px solid #edf2ee;
+}
+
+.presenca-jogador-dados {
+  min-width: 0;
+}
+
+.presenca-jogador-dados strong,
+.presenca-jogador-dados small {
+  display: block;
+}
+
+.presenca-jogador-dados strong {
+  color: #294537;
+  font-size: 14px;
+}
+
+.presenca-jogador-dados small {
+  margin-top: 2px;
+  overflow: hidden;
+  color: #7b8880;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.presenca-controles {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.presenca-funcao {
+  padding: 8px 9px;
+  border: 1px solid #cedbd2;
+  border-radius: 8px;
+  background: white;
+  color: #40594b;
+  font-size: 12px;
+  font-weight: 700;
+  outline: none;
+}
+
+.presenca-funcao:focus {
+  border-color: #16834f;
+}
+
+.presenca-toggle {
+  min-width: 62px;
+  padding: 9px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.presenca-toggle.nao {
+  border: 1px solid #d6dfd9;
+  background: #f3f5f4;
+  color: #68766e;
+}
+
+.presenca-toggle.sim {
+  border: 1px solid #16834f;
+  background: #16834f;
+  color: white;
+}
+
+.presenca-vazio {
+  padding: 18px 14px;
+  border-top: 1px solid #edf2ee;
+  color: #849088;
+  font-size: 12px;
+  text-align: center;
+}
+
+.presenca-rodape {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: #f4f8f5;
+}
+
+.presenca-rodape strong,
+.presenca-rodape span {
+  display: block;
+}
+
+.presenca-rodape strong {
+  color: #145c39;
+}
+
+.presenca-rodape span {
+  margin-top: 3px;
+  color: #68776e;
+  font-size: 12px;
+}
+
+@media (max-width: 800px) {
+  .presenca-grupos {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .presenca-resumo {
+    gap: 6px;
+  }
+
+  .presenca-jogador {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .presenca-controles {
+    width: 100%;
+  }
+
+  .presenca-funcao {
+    flex: 1;
+  }
+
+  .presenca-toggle {
+    min-width: 76px;
+  }
+}
+
+
+/* Ações rápidas de presença: reduzem os toques quando a maioria compareceu. */
+.presenca-acoes-gerais {
+  display: flex;
+  gap: 9px;
+  margin: 14px 0;
+}
+
+.btn-presenca-todos,
+.btn-presenca-limpar,
+.btn-presenca-grupo {
+  border-radius: 9px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.btn-presenca-todos {
+  flex: 1;
+  padding: 12px 14px;
+  border: 0;
+  background: #16834f;
+  color: white;
+}
+
+.btn-presenca-limpar {
+  padding: 12px 14px;
+  border: 1px solid #d3ddd6;
+  background: white;
+  color: #65736b;
+}
+
+.btn-presenca-grupo {
+  width: calc(100% - 24px);
+  margin: 10px 12px;
+  padding: 9px 11px;
+  border: 1px solid #b9d7c6;
+  background: #edf7f1;
+  color: #14623c;
+  font-size: 12px;
+}
+
+.btn-presenca-todos:hover,
+.btn-presenca-grupo:hover {
+  filter: brightness(0.97);
+}
+
+@media (max-width: 520px) {
+  .presenca-acoes-gerais {
+    flex-direction: column;
+  }
+
+  .btn-presenca-todos,
+  .btn-presenca-limpar {
+    width: 100%;
+  }
+}
+
+
+
+/* Resultado visual do sorteio dos goleiros. */
+.sorteio-goleiro-linha {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+}
+
+.sorteio-goleiro-numero {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 58px;
+  height: 58px;
+  flex: 0 0 58px;
+  border-radius: 50%;
+  background: #eef8f2;
+  color: #073d2a;
+  font-size: 22px !important;
+  font-weight: 900;
+}
+
+.colete-sorteado-visual {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.camisa-colete-svg {
+  display: block;
+  width: 76px;
+  height: 76px;
+  flex: 0 0 76px;
+  filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.14));
+}
+
+.colete-sorteado-visual > div {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.colete-sorteado-visual div > span {
+  color: #6f7f76;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.colete-sorteado-visual div > strong {
+  display: inline-flex;
+  margin-top: 7px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #eef7f2;
+  color: #164d35;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.2px;
+}
+
+.sorteio-goleiro-espera {
+  color: #78867e;
+  font-size: 13px;
+}
+
+@media (max-width: 620px) {
+  .sorteio-goleiro-linha {
+    gap: 10px;
+  }
+
+  .sorteio-goleiro-numero {
+    width: 48px;
+    height: 48px;
+    flex-basis: 48px;
+    font-size: 18px !important;
+  }
+
+  .colete-sorteado-visual {
+    gap: 10px;
+  }
+
+  .camisa-colete-svg {
+    width: 58px;
+    height: 58px;
+    flex-basis: 58px;
+  }
+}
+
+/* Formação visual dos grupos do sorteio inicial da linha. */
+.sorteio-linha-card {
+  margin-top: 18px;
+}
+
+.grupos-sorteio-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.grupo-sorteio {
+  overflow: hidden;
+  border: 1px solid #d7e5dc;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 5px 18px rgba(19, 72, 45, 0.06);
+}
+
+.grupo-sorteio-incompleto {
+  border-style: dashed;
+  background: #fbfcfb;
+}
+
+.grupo-sorteio-cabecalho {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  background: #f0f8f3;
+  border-bottom: 1px solid #e0ebe4;
+}
+
+.grupo-sorteio-cabecalho > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.grupo-sorteio-cabecalho span {
+  color: #16834f;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.8px;
+}
+
+.grupo-sorteio-cabecalho strong {
+  margin-top: 3px;
+  color: #183f2e;
+  font-size: 16px;
+}
+
+.grupo-sorteio-cabecalho .camisa-colete-svg {
+  width: 54px;
+  height: 54px;
+  flex-basis: 54px;
+}
+
+.grupo-sorteio-goleiro {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #edf2ef;
+}
+
+.grupo-sorteio-goleiro small {
+  color: #78867e;
+}
+
+.grupo-sorteio-goleiro strong {
+  color: #173f2d;
+}
+
+.grupo-sorteio-goleiro span {
+  margin-left: auto;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #edf7f1;
+  color: #19613e;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.grupo-sorteio-jogadores {
+  padding: 8px 16px 14px;
+}
+
+.grupo-sorteio-jogadores > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid #eff3f0;
+}
+
+.grupo-sorteio-jogadores > div:last-child {
+  border-bottom: 0;
+}
+
+.grupo-sorteio-jogadores strong {
+  min-width: 34px;
+  color: #16834f;
+  font-size: 13px;
+}
+
+.grupo-sorteio-jogadores span {
+  color: #263b31;
+  font-weight: 700;
+}
+
+@media (max-width: 760px) {
+  .grupos-sorteio-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.btn-descartar-sessao {
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px 16px;
+  border: 1px solid #d7a9a9;
+  border-radius: 12px;
+  background: #fff;
+  color: #9a2929;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.btn-descartar-sessao:hover:not(:disabled) {
+  background: #fff6f6;
+}
+
+.btn-descartar-sessao:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
