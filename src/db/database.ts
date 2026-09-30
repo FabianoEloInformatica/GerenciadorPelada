@@ -115,7 +115,78 @@ export type SorteioLinhaInicialDB = {
   criadoEm: string
 }
 
+
+export type StatusPartida = 'EM_ANDAMENTO' | 'FINALIZADA'
+
+export type PartidaDB = {
+  id?: number
+  sessaoId: number
+  numero: number
+  status: StatusPartida
+  placarTime1: number
+  placarTime2: number
+  iniciadaEm: string
+  finalizadaEm?: string
+  // Relógio persistido: permite F5, bloqueio da tela e pausas sem perder o tempo.
+  pausada: boolean
+  pausadaEm?: string
+  totalPausadoMs: number
+  criadoEm: string
+  atualizadoEm: string
+}
+
+export type PartidaTimeDB = {
+  id?: number
+  partidaId: number
+  lado: 1 | 2
+  grupoOrigem?: number
+  goleiroId: number
+  corColete?: string
+  criadoEm: string
+}
+
+export type PartidaJogadorDB = {
+  id?: number
+  partidaId: number
+  lado: 1 | 2
+  jogadorId: number
+  funcao: TipoJogador
+  ordemFormacao: number
+  criadoEm: string
+}
+
 interface GerenciadorPeladaDB extends DBSchema {
+
+
+  partidas: {
+    key: number
+    value: PartidaDB
+    indexes: {
+      'por-sessao': number
+      'por-sessao-numero': [number, number]
+      'por-status': StatusPartida
+    }
+  }
+
+  partida_times: {
+    key: number
+    value: PartidaTimeDB
+    indexes: {
+      'por-partida': number
+      'por-partida-lado': [number, number]
+    }
+  }
+
+  partida_jogadores: {
+    key: number
+    value: PartidaJogadorDB
+    indexes: {
+      'por-partida': number
+      'por-partida-lado': [number, number]
+      'por-partida-jogador': [number, number]
+    }
+  }
+
 
   sorteio_linha_inicial: {
     key: number
@@ -176,7 +247,7 @@ let banco: Promise<IDBPDatabase<GerenciadorPeladaDB>> | null = null
 
 export function obterBanco() {
   if (!banco) {
-    banco = openDB<GerenciadorPeladaDB>('gerenciador-pelada', 6, {
+    banco = openDB<GerenciadorPeladaDB>('gerenciador-pelada', 8, {
       upgrade(db, oldVersion) {
         /*
          * Instalação nova:
@@ -328,6 +399,61 @@ export function obterBanco() {
             ['sessaoId', 'grupo'],
           )
         }
+
+
+        /*
+         * Versão 7:
+         * cria a estrutura oficial das partidas. A formação que entra em quadra
+         * vira um registro próprio, independente do sorteio inicial, para que
+         * F5/reabertura nunca precise reconstruir uma partida em andamento.
+         */
+        if (oldVersion < 7) {
+          const partidas = db.createObjectStore('partidas', {
+            keyPath: 'id',
+            autoIncrement: true,
+          })
+
+          partidas.createIndex('por-sessao', 'sessaoId')
+          partidas.createIndex(
+            'por-sessao-numero',
+            ['sessaoId', 'numero'],
+            { unique: true },
+          )
+          partidas.createIndex('por-status', 'status')
+
+          const times = db.createObjectStore('partida_times', {
+            keyPath: 'id',
+            autoIncrement: true,
+          })
+
+          times.createIndex('por-partida', 'partidaId')
+          times.createIndex(
+            'por-partida-lado',
+            ['partidaId', 'lado'],
+            { unique: true },
+          )
+
+          const jogadores = db.createObjectStore('partida_jogadores', {
+            keyPath: 'id',
+            autoIncrement: true,
+          })
+
+          jogadores.createIndex('por-partida', 'partidaId')
+          jogadores.createIndex(
+            'por-partida-lado',
+            ['partidaId', 'lado'],
+          )
+          jogadores.createIndex(
+            'por-partida-jogador',
+            ['partidaId', 'jogadorId'],
+            { unique: true },
+          )
+        }
+        /* Versão 8: novos campos do relógio não exigem recriar a store. */
+        if (oldVersion < 8) {
+          // Migração sem alteração estrutural.
+        }
+
       },
     })
   }

@@ -249,3 +249,51 @@
   color: #738078;
   line-height: 1.4;
 }
+
+/* =========================================================
+   AJUSTES RESPONSIVOS - CONFIGURAÃ‡Ã•ES
+   ========================================================= */
+
+.configuracoes,
+.config-cabecalho,
+.config-card,
+.config-card-titulo,
+.config-grid,
+.config-grid > *,
+.opcoes,
+.opcao-linha,
+.opcao-linha > *,
+.lista-avisos,
+.aviso-item,
+.aviso-item > *,
+.coletes,
+.colete-item,
+.colete-item > *,
+.resumo-config,
+.resumo-grid,
+.resumo-grid > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.campo input {
+  min-width: 0;
+}
+
+@media (max-width: 750px) {
+  .opcao-linha,
+  .aviso-item {
+    align-items: flex-start;
+  }
+
+  .opcao-linha > div,
+  .aviso-item > div {
+    min-width: 0;
+    flex: 1;
+    overflow-wrap: anywhere;
+  }
+
+  .colete-item {
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+  }
+}

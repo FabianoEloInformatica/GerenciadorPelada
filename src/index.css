@@ -7,11 +7,49 @@
 html,
 body,
 #root {
+  width: 100%;
+  max-width: 100%;
   margin: 0;
-  min-width: 320px;
   min-height: 100%;
+}
+
+html,
+body {
+  overflow-x: hidden;
 }
 
 body {
   min-height: 100vh;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+}
+
+input,
+textarea,
+select,
+button {
+  max-width: 100%;
+}
+
+/*
+ * No iPhone, campos abaixo de 16px podem provocar zoom automÃ¡tico
+ * ao receber foco. Mantemos 16px somente no mobile.
+ */
+@media (max-width: 700px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
 }

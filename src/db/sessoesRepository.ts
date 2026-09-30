@@ -261,6 +261,7 @@ export async function salvarSorteioInicialGoleiros(
     jogadorId: number
     numeroSorteado: number
     ordem: number
+    corColete?: string
   }>,
 ): Promise<void> {
   const db = await obterBanco()
@@ -282,6 +283,7 @@ export async function salvarSorteioInicialGoleiros(
       jogadorId: resultado.jogadorId,
       numeroSorteado: resultado.numeroSorteado,
       ordem: resultado.ordem,
+      corColete: resultado.corColete,
       criadoEm: agora,
     }
 

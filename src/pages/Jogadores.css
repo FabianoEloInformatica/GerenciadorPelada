@@ -657,3 +657,63 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* =========================================================
+   AJUSTES RESPONSIVOS - JOGADORES
+   ========================================================= */
+
+.jogadores-page,
+.jogadores-cabecalho,
+.jogadores-cabecalho > *,
+.jogadores-resumo,
+.jogadores-resumo > *,
+.jogadores-controles,
+.lista-jogadores,
+.jogador-item,
+.jogador-item > *,
+.cadastro-jogador-card,
+.cadastro-jogador-titulo,
+.cadastro-jogador-titulo > *,
+.campo-jogador,
+.apelidos-area,
+.apelidos-lista,
+.campo-apelido,
+.campo-apelido > *,
+.importacao-lista-card,
+.resultado-importacao,
+.resultado-numeros,
+.resultado-numeros > *,
+.resultado-grupos,
+.resultado-grupos > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.jogador-dados {
+  min-width: 0;
+}
+
+.jogador-dados strong,
+.jogador-dados span,
+.jogador-dados small {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 700px) {
+  .jogadores-cabecalho h1 {
+    font-size: 28px;
+  }
+
+  .jogador-item {
+    width: 100%;
+  }
+
+  .jogador-acoes {
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
+  .acoes-cabecalho-jogadores {
+    min-width: 0;
+  }
+}

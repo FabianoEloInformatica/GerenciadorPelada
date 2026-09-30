@@ -220,3 +220,39 @@ a {
 .pagina-conteudo h1 {
   margin-top: 0;
 }
+
+/* =========================================================
+   PROTEÃ‡ÃƒO RESPONSIVA GLOBAL DO LAYOUT
+   ========================================================= */
+
+.app,
+.pagina,
+.conteudo,
+.pagina-conteudo,
+.card,
+.destaque,
+.grade,
+.card-menu {
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (max-width: 720px) {
+  .pagina-topo {
+    min-width: 0;
+    padding-left: 14px;
+    padding-right: 14px;
+    gap: 12px;
+  }
+
+  .pagina-topo span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .conteudo,
+  .pagina-conteudo {
+    width: calc(100% - 24px);
+    max-width: calc(100% - 24px);
+  }
+}

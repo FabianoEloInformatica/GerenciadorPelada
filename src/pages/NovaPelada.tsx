@@ -4,6 +4,14 @@ import {
   listarSorteioInicialLinha,
   salvarSorteioInicialLinha,
 } from '../db/sorteioLinhaRepository'
+import {
+  buscarPartidaEmAndamentoCompleta,
+  iniciarPrimeiraPartida,
+  normalizarRelogioPartida,
+  pausarPartida,
+  retomarPartida,
+  type PartidaEmAndamentoCompleta,
+} from '../db/partidasRepository'
 import type { ConfiguracaoPeladaDB } from '../db/database'
 
 import {
@@ -134,6 +142,14 @@ export default function NovaPelada() {
   const [resultadoSorteioLinha, setResultadoSorteioLinha] =
     useState<ResultadoSorteioLinha[]>([])
 
+  const [iniciandoPartida, setIniciandoPartida] = useState(false)
+  const [sessaoEmAndamentoId, setSessaoEmAndamentoId] =
+    useState<number | null>(null)
+  const [partidaEmAndamento, setPartidaEmAndamento] =
+    useState<PartidaEmAndamentoCompleta | null>(null)
+  const [agoraRelogio, setAgoraRelogio] = useState(Date.now())
+  const [alterandoPausa, setAlterandoPausa] = useState(false)
+
   const [dataPelada, setDataPelada] = useState(hojeFormatoInput())
   const [textoLista, setTextoLista] = useState('')
 
@@ -185,6 +201,13 @@ export default function NovaPelada() {
   const [resultadoSorteioGoleiros, setResultadoSorteioGoleiros] = useState<
     ResultadoSorteioGoleiro[]
   >([])
+
+  useEffect(() => {
+    if (!partidaEmAndamento) return
+    // O intervalo só redesenha; o tempo real vem dos timestamps persistidos.
+    const intervalo = window.setInterval(() => setAgoraRelogio(Date.now()), 250)
+    return () => window.clearInterval(intervalo)
+  }, [partidaEmAndamento])
 
   useEffect(() => {
     async function carregarConfiguracao() {
@@ -252,8 +275,38 @@ export default function NovaPelada() {
          * PREPARACAO mais recente e reconstruímos a conferência de presença.
          */
         const sessoes = await listarSessoes()
+        /*
+         * Uma sessão EM_ANDAMENTO tem prioridade absoluta. Depois que a partida
+         * começou, Nova Pelada não pode oferecer uma nova lista como se nada
+         * estivesse acontecendo.
+         */
+        const sessoesEmAndamento = sessoes
+          .filter(
+            (sessao) =>
+              sessao.status === 'EM_ANDAMENTO' && sessao.id !== undefined,
+          )
+          .sort((a, b) => (b.id ?? 0) - (a.id ?? 0))
+
+        const sessaoAndamento = sessoesEmAndamento[0]
+
+        if (sessaoAndamento?.id) {
+          const partida = await buscarPartidaEmAndamentoCompleta(
+            sessaoAndamento.id,
+          )
+
+          if (partida) {
+            setDataPelada(sessaoAndamento.data)
+            setSessaoEmAndamentoId(sessaoAndamento.id)
+            setPartidaEmAndamento(partida)
+            return
+          }
+        }
+
         const sessoesEmPreparacao = sessoes
-          .filter((sessao) => sessao.status === 'PREPARACAO' && sessao.id !== undefined)
+          .filter(
+            (sessao) =>
+              sessao.status === 'PREPARACAO' && sessao.id !== undefined,
+          )
           .sort((a, b) => (b.id ?? 0) - (a.id ?? 0))
 
         const sessao = sessoesEmPreparacao[0]
@@ -972,6 +1025,113 @@ export default function NovaPelada() {
     }
   }
 
+  async function iniciarPrimeiraPartidaOficial() {
+    if (sessaoCriadaId === null) {
+      alert('A sessão da pelada não foi encontrada.')
+      return
+    }
+
+    const time1 = resultadoSorteioLinha
+      .filter((item) => item.grupo === 1)
+      .sort((a, b) => a.numeroSorteado - b.numeroSorteado)
+
+    const time2 = resultadoSorteioLinha
+      .filter((item) => item.grupo === 2)
+      .sort((a, b) => a.numeroSorteado - b.numeroSorteado)
+
+    const goleiro1 = resultadoSorteioGoleiros.find((item) => item.ordem === 1)
+    const goleiro2 = resultadoSorteioGoleiros.find((item) => item.ordem === 2)
+
+    const time1Completo =
+      time1.length > 0 && time1.every((item) => item.grupoCompleto)
+    const time2Completo =
+      time2.length > 0 && time2.every((item) => item.grupoCompleto)
+
+    if (!time1Completo || !time2Completo || !goleiro1 || !goleiro2) {
+      alert('A primeira partida ainda não possui dois times completos.')
+      return
+    }
+
+    if (
+      goleiro1.jogador.id === undefined ||
+      goleiro2.jogador.id === undefined ||
+      time1.some((item) => item.jogador.id === undefined) ||
+      time2.some((item) => item.jogador.id === undefined)
+    ) {
+      alert('Existe jogador sem identificação válida na formação.')
+      return
+    }
+
+    const confirmou = window.confirm(
+      'Iniciar a primeira partida?\\n\\n' +
+        'A formação atual será gravada como oficial e a pelada passará para EM ANDAMENTO.',
+    )
+
+    if (!confirmou) return
+
+    try {
+      setIniciandoPartida(true)
+
+      /*
+       * A tela envia um retrato da formação atual. O repository grava partida,
+       * times, atletas e mudança de status da sessão na mesma transação.
+       */
+      const partidaId = await iniciarPrimeiraPartida(sessaoCriadaId, [
+        {
+          lado: 1,
+          grupoOrigem: 1,
+          goleiroId: goleiro1.jogador.id!,
+          corColete: goleiro1.corColete,
+          jogadoresLinhaIds: time1.map((item) => item.jogador.id!),
+        },
+        {
+          lado: 2,
+          grupoOrigem: 2,
+          goleiroId: goleiro2.jogador.id!,
+          corColete: goleiro2.corColete,
+          jogadoresLinhaIds: time2.map((item) => item.jogador.id!),
+        },
+      ])
+
+      alert(
+        `Partida #${partidaId} iniciada e salva com sucesso. A pelada agora está EM ANDAMENTO.`,
+      )
+    } catch (erro) {
+      console.error('Erro ao iniciar primeira partida:', erro)
+      alert(
+        erro instanceof Error
+          ? erro.message
+          : 'Não foi possível iniciar a primeira partida.',
+      )
+    } finally {
+      setIniciandoPartida(false)
+    }
+  }
+
+  async function alternarPausaPartida() {
+    const id = partidaEmAndamento?.partida.id
+    if (!id) return
+    try {
+      setAlterandoPausa(true)
+      const atual = normalizarRelogioPartida(partidaEmAndamento.partida)
+      const partida = atual.pausada ? await retomarPartida(id) : await pausarPartida(id)
+      setPartidaEmAndamento((estado) => estado ? { ...estado, partida } : estado)
+      setAgoraRelogio(Date.now())
+    } catch (erro) {
+      console.error('Erro ao alterar pausa:', erro)
+      alert(erro instanceof Error ? erro.message : 'Não foi possível alterar a pausa.')
+    } finally { setAlterandoPausa(false) }
+  }
+
+  function eventoGolEmBreve(lado: 1 | 2) {
+    const cor = partidaEmAndamento?.times.find((t) => t.lado === lado)?.corColete ?? `Time ${lado}`
+    alert(`GOL ${cor}: na próxima etapa vamos abrir a escolha do autor do gol.`)
+  }
+
+  function finalizarPartidaEmBreve() {
+    alert('A finalização será ligada junto das regras de vitória, empate e rotação.')
+  }
+
   async function descartarPeladaEmPreparacao() {
     if (sessaoCriadaId === null) return
 
@@ -1105,6 +1265,52 @@ export default function NovaPelada() {
         </p>
       </section>
 
+      {!carregandoSessao && partidaEmAndamento && sessaoEmAndamentoId !== null && (() => {
+        const partida = normalizarRelogioPartida(partidaEmAndamento.partida)
+        const time1 = partidaEmAndamento.times.find((t) => t.lado === 1)
+        const time2 = partidaEmAndamento.times.find((t) => t.lado === 2)
+        const hex = (nome?: string) => configuracaoPelada?.coresColetes.find((c) => c.nome.toLocaleLowerCase('pt-BR') === nome?.toLocaleLowerCase('pt-BR'))?.hex ?? '#777777'
+        const inicio = new Date(partida.iniciadaEm).getTime()
+        const referencia = partida.pausada && partida.pausadaEm ? new Date(partida.pausadaEm).getTime() : agoraRelogio
+        const ms = Math.max(0, referencia - inicio - partida.totalPausadoMs)
+        const total = Math.floor(ms / 1000)
+        const limite = (configuracaoPelada?.tempoQuedaMinutos ?? 7) * 60
+        const tempo = `${String(Math.floor(total / 60)).padStart(2,'0')}:${String(total % 60).padStart(2,'0')}${total >= limite ? '+' : ''}`
+        return (
+          <section className="partida-operacional">
+            <div className="partida-operacional-topo"><span>PELADA EM ANDAMENTO</span><strong>PARTIDA {partida.numero}</strong></div>
+            <div className="placar-operacional">
+              <div className="placar-time placar-time-esquerda">
+                <CamisaColete cor={hex(time1?.corColete)} />
+                <span>{time1?.corColete ?? 'Time 1'}</span>
+              </div>
+
+              {/* O placar é uma unidade central: CAMISA 0 × 0 CAMISA. */}
+              <div className="placar-resultado" aria-label={`Placar ${partida.placarTime1} a ${partida.placarTime2}`}>
+                <strong>{partida.placarTime1}</strong>
+                <span>×</span>
+                <strong>{partida.placarTime2}</strong>
+              </div>
+
+              <div className="placar-time placar-time-direita">
+                <span>{time2?.corColete ?? 'Time 2'}</span>
+                <CamisaColete cor={hex(time2?.corColete)} />
+              </div>
+            </div>
+            <div className={`cronometro-operacional ${total >= limite ? 'limite' : ''} ${partida.pausada ? 'pausado' : ''}`}>
+              <small>{partida.pausada ? 'PARTIDA PAUSADA' : total >= limite ? 'TEMPO LIMITE ATINGIDO' : 'TEMPO DE JOGO'}</small><strong>{tempo}</strong>
+            </div>
+            <div className="acoes-gol">
+              <button type="button" onClick={() => eventoGolEmBreve(1)}><CamisaColete cor={hex(time1?.corColete)} /><span>GOL</span><small>{time1?.corColete ?? 'Time 1'}</small></button>
+              <button type="button" onClick={() => eventoGolEmBreve(2)}><CamisaColete cor={hex(time2?.corColete)} /><span>GOL</span><small>{time2?.corColete ?? 'Time 2'}</small></button>
+            </div>
+            <button type="button" className={`btn-pausa-partida ${partida.pausada ? 'retomar' : ''}`} onClick={alternarPausaPartida} disabled={alterandoPausa}>{alterandoPausa ? 'SALVANDO...' : partida.pausada ? '▶ RETOMAR PARTIDA' : 'Ⅱ PAUSAR PARTIDA'}</button>
+            <button type="button" className="btn-finalizar-partida" onClick={finalizarPartidaEmBreve}>FINALIZAR PARTIDA</button>
+            <p className="partida-operacional-rodape">Sessão #{sessaoEmAndamentoId} • relógio e pausa recuperáveis após F5</p>
+          </section>
+        )
+      })()}
+
       {carregandoSessao && (
         <section className="nova-pelada-card">
           <div className="reconhecimento-sucesso">
@@ -1125,6 +1331,8 @@ export default function NovaPelada() {
         </section>
       )}
 
+      {!partidaEmAndamento && (
+        <>
       <section className="nova-pelada-card">
         <div className="nova-pelada-etapa">
           <span>1</span>
@@ -1904,6 +2112,167 @@ export default function NovaPelada() {
             </>
           )}
         </section>
+      )}
+
+      {resultadoSorteioLinha.length > 0 && (() => {
+        /*
+         * A primeira partida é apenas uma leitura do sorteio oficial já salvo.
+         * Nenhum novo sorteio acontece aqui: Grupo 1 enfrenta Grupo 2 e cada
+         * grupo usa o goleiro da mesma posição na ordem inicial.
+         */
+        const time1 = resultadoSorteioLinha.filter(
+          (item) => item.grupo === 1,
+        )
+        const time2 = resultadoSorteioLinha.filter(
+          (item) => item.grupo === 2,
+        )
+
+        const time1Completo =
+          time1.length > 0 && time1.every((item) => item.grupoCompleto)
+        const time2Completo =
+          time2.length > 0 && time2.every((item) => item.grupoCompleto)
+
+        const goleiro1 = resultadoSorteioGoleiros.find(
+          (item) => item.ordem === 1,
+        )
+        const goleiro2 = resultadoSorteioGoleiros.find(
+          (item) => item.ordem === 2,
+        )
+
+        const primeiraPartidaPronta =
+          time1Completo && time2Completo && !!goleiro1 && !!goleiro2
+
+        if (!primeiraPartidaPronta) {
+          return (
+            <section className="config-card primeira-partida-card">
+              <div className="config-card-titulo">
+                <span>🏟️</span>
+                <div>
+                  <strong>Primeira partida</strong>
+                  <small>
+                    Aguardando dois times completos e seus goleiros.
+                  </small>
+                </div>
+              </div>
+
+              <div className="reconhecimento-aviso">
+                <strong>Primeira partida ainda não pode ser formada.</strong>
+                <p>
+                  Os Grupos 1 e 2 precisam estar completos e possuir os
+                  goleiros #1 e #2 do sorteio inicial.
+                </p>
+              </div>
+            </section>
+          )
+        }
+
+        const corHex = (nome?: string) =>
+          configuracaoPelada?.coresColetes.find(
+            (cor) =>
+              cor.nome.toLocaleLowerCase('pt-BR') ===
+              nome?.toLocaleLowerCase('pt-BR'),
+          )?.hex ?? '#777777'
+
+        return (
+          <section className="config-card primeira-partida-card">
+            <div className="config-card-titulo">
+              <span>🏟️</span>
+              <div>
+                <strong>Primeira partida</strong>
+                <small>
+                  Formação criada diretamente do sorteio inicial oficial.
+                </small>
+              </div>
+            </div>
+
+            <div className="primeira-partida-status">
+              PRONTA PARA INICIAR
+            </div>
+
+            <div className="primeira-partida-confronto">
+              <article className="primeira-partida-time">
+                <div className="primeira-partida-time-cabecalho">
+                  <CamisaColete cor={corHex(goleiro1.corColete)} />
+                  <div>
+                    <span>TIME 1</span>
+                    <strong>
+                      {goleiro1.corColete
+                        ? `Colete ${goleiro1.corColete}`
+                        : 'Colete não informado'}
+                    </strong>
+                  </div>
+                </div>
+
+                <div className="primeira-partida-goleiro">
+                  <small>GOLEIRO</small>
+                  <strong>🧤 {goleiro1.jogador.nomeExibicao}</strong>
+                </div>
+
+                <div className="primeira-partida-jogadores">
+                  {time1
+                    .sort((a, b) => a.numeroSorteado - b.numeroSorteado)
+                    .map((item) => (
+                      <div key={`partida-time1-${item.jogador.id}`}>
+                        <strong>#{item.numeroSorteado}</strong>
+                        <span>{item.jogador.nomeExibicao}</span>
+                      </div>
+                    ))}
+                </div>
+              </article>
+
+              <div className="primeira-partida-versus">×</div>
+
+              <article className="primeira-partida-time">
+                <div className="primeira-partida-time-cabecalho">
+                  <CamisaColete cor={corHex(goleiro2.corColete)} />
+                  <div>
+                    <span>TIME 2</span>
+                    <strong>
+                      {goleiro2.corColete
+                        ? `Colete ${goleiro2.corColete}`
+                        : 'Colete não informado'}
+                    </strong>
+                  </div>
+                </div>
+
+                <div className="primeira-partida-goleiro">
+                  <small>GOLEIRO</small>
+                  <strong>🧤 {goleiro2.jogador.nomeExibicao}</strong>
+                </div>
+
+                <div className="primeira-partida-jogadores">
+                  {time2
+                    .sort((a, b) => a.numeroSorteado - b.numeroSorteado)
+                    .map((item) => (
+                      <div key={`partida-time2-${item.jogador.id}`}>
+                        <strong>#{item.numeroSorteado}</strong>
+                        <span>{item.jogador.nomeExibicao}</span>
+                      </div>
+                    ))}
+                </div>
+              </article>
+            </div>
+
+            <button
+              type="button"
+              className="btn-iniciar-primeira-partida"
+              onClick={iniciarPrimeiraPartidaOficial}
+              disabled={iniciandoPartida}
+            >
+              {iniciandoPartida ? 'INICIANDO PARTIDA...' : 'INICIAR PARTIDA'}
+            </button>
+
+            <div className="primeira-partida-observacao">
+              <strong>Formação pronta</strong>
+              <span>
+                Ao iniciar, esta formação será persistida como a Partida 1 oficial.
+              </span>
+            </div>
+          </section>
+        )
+      })()}
+
+        </>
       )}
 
       {jogadorEmIdentificacao && (
