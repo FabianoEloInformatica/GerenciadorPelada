@@ -1768,3 +1768,796 @@ A formação apenas apresenta os Grupos 1 e 2 do sorteio oficial.
     min-width: 0;
   }
 }
+/* =========================================================
+   ORGANIZAÇÃO / FILA DURANTE A PARTIDA
+   O painel é apenas operacional: abrir/fechar não interfere
+   no relógio persistido da partida.
+   ========================================================= */
+
+.organizacao-operacional {
+  width: 100%;
+  max-width: 100%;
+  margin-top: 14px;
+}
+
+.btn-organizacao-fila {
+  display: flex;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid #bcd7c7;
+  border-radius: 12px;
+  background: #edf7f1;
+  color: #174f37;
+  text-align: left;
+  cursor: pointer;
+}
+
+.btn-organizacao-fila.aberto {
+  border-radius: 12px 12px 0 0;
+  background: #e4f3ea;
+}
+
+.btn-organizacao-fila > span {
+  min-width: 0;
+}
+
+.btn-organizacao-fila strong,
+.btn-organizacao-fila small {
+  display: block;
+}
+
+.btn-organizacao-fila strong {
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+}
+
+.btn-organizacao-fila small {
+  margin-top: 3px;
+  overflow: hidden;
+  color: #65776d;
+  font-size: 11px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-organizacao-fila b {
+  flex: 0 0 auto;
+  font-size: 13px;
+}
+
+.organizacao-conteudo {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #d5e4db;
+  border-top: 0;
+  border-radius: 0 0 12px 12px;
+  background: #f9fbfa;
+}
+
+.organizacao-aviso,
+.organizacao-vazia {
+  padding: 12px 14px;
+  border-radius: 10px;
+}
+
+.organizacao-aviso {
+  margin-bottom: 12px;
+  background: #eef7f2;
+}
+
+.organizacao-vazia {
+  border: 1px dashed #cbd8d0;
+  background: #fff;
+  text-align: center;
+}
+
+.organizacao-aviso strong,
+.organizacao-aviso span,
+.organizacao-vazia strong,
+.organizacao-vazia span {
+  display: block;
+}
+
+.organizacao-aviso strong,
+.organizacao-vazia strong {
+  color: #244b36;
+  font-size: 12px;
+}
+
+.organizacao-aviso span,
+.organizacao-vazia span {
+  margin-top: 3px;
+  color: #718078;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.organizacao-times-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.organizacao-time {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #d8e5dd;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.organizacao-time.incompleto {
+  border-style: dashed;
+}
+
+.organizacao-time-topo {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px;
+  background: #f1f8f4;
+}
+
+.organizacao-time.incompleto .organizacao-time-topo {
+  background: #faf8f0;
+}
+
+.organizacao-time-topo > div {
+  min-width: 0;
+}
+
+.organizacao-time-topo > div > span,
+.organizacao-time-topo > div > strong {
+  display: block;
+}
+
+.organizacao-time-topo > div > span {
+  color: #687a70;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+}
+
+.organizacao-time-topo > div > strong {
+  margin-top: 3px;
+  color: #173f2d;
+  font-size: 13px;
+}
+
+.organizacao-status {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.organizacao-status.pronto {
+  background: #dff2e7;
+  color: #14623c;
+}
+
+.organizacao-status.pendente {
+  background: #fff0c9;
+  color: #8a650d;
+}
+
+.organizacao-goleiro {
+  padding: 10px 12px;
+  border-top: 1px solid #e8efeb;
+  border-bottom: 1px solid #e8efeb;
+}
+
+.organizacao-goleiro span,
+.organizacao-goleiro strong {
+  display: block;
+}
+
+.organizacao-goleiro span {
+  color: #819087;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.6px;
+}
+
+.organizacao-goleiro strong {
+  margin-top: 2px;
+  overflow: hidden;
+  color: #294537;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.organizacao-jogadores {
+  min-width: 0;
+}
+
+.organizacao-jogadores > div {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #eef2ef;
+}
+
+.organizacao-jogadores > div > span {
+  color: #16834f;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.organizacao-jogadores > div > strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #46594e;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.organizacao-jogadores .organizacao-vaga {
+  background: #fffaf0;
+}
+
+.organizacao-jogadores .organizacao-vaga > span,
+.organizacao-jogadores .organizacao-vaga > strong {
+  color: #9a761d;
+}
+
+.organizacao-time-rodape {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px;
+  background: #fafcfb;
+}
+
+.organizacao-time-rodape span,
+.organizacao-time-rodape strong {
+  min-width: 0;
+  font-size: 10px;
+}
+
+.organizacao-time-rodape span {
+  color: #7a8981;
+}
+
+.organizacao-time-rodape strong {
+  color: #315441;
+  text-align: right;
+}
+
+@media (max-width: 700px) {
+  .organizacao-times-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .organizacao-conteudo {
+    padding: 10px;
+  }
+
+  .btn-organizacao-fila {
+    padding: 12px;
+  }
+
+  .organizacao-time-topo {
+    padding: 10px;
+  }
+}
+
+@media (max-width: 420px) {
+  .btn-organizacao-fila small {
+    white-space: normal;
+  }
+
+  .organizacao-time-topo {
+    align-items: flex-start;
+  }
+
+  .organizacao-status {
+    font-size: 8px;
+  }
+
+  .organizacao-time-rodape {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .organizacao-time-rodape strong {
+    text-align: left;
+  }
+}
+
+/* =========================================================
+   CHEGADA ATRASADA
+   Mantém a operação dentro da Organização / Fila sem afetar
+   o cronômetro ou o sorteio inicial já oficializado.
+   ========================================================= */
+.organizacao-acoes {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.btn-chegada-atrasada {
+  min-height: 46px;
+  max-width: 100%;
+  border: 0;
+  border-radius: 12px;
+  padding: 0 18px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.fila-atrasados {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.fila-atrasados-titulo {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.fila-atrasados-titulo span,
+.fila-atrasados p {
+  opacity: 0.72;
+}
+
+.fila-atrasado-item {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.fila-atrasado-item strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.fila-atrasado-item small {
+  white-space: nowrap;
+  opacity: 0.72;
+}
+
+.chegada-atrasada-modal {
+  width: min(620px, calc(100vw - 28px));
+  max-width: 100%;
+  max-height: calc(100vh - 28px);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.chegada-atrasada-erro {
+  width: 100%;
+  min-width: 0;
+  border-radius: 10px;
+  padding: 11px 12px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.chegada-atrasada-acoes {
+  width: 100%;
+  min-width: 0;
+}
+
+.chegada-atrasada-acoes > button {
+  min-width: 0;
+}
+
+@media (max-width: 700px) {
+  .organizacao-acoes,
+  .chegada-atrasada-acoes {
+    flex-direction: column;
+  }
+
+  .btn-chegada-atrasada,
+  .chegada-atrasada-acoes > button {
+    width: 100%;
+  }
+
+  .fila-atrasados-titulo {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .fila-atrasado-item {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .fila-atrasado-item small {
+    grid-column: 2;
+    white-space: normal;
+  }
+
+  .chegada-atrasada-modal input,
+  .chegada-atrasada-modal select,
+  .chegada-atrasada-modal textarea {
+    width: 100%;
+    min-width: 0;
+    font-size: 16px !important;
+  }
+}
+
+/* =========================================================
+   CHEGADA ATRASADA - PADRÃO VISUAL DO APP
+   Cards e botões substituem selects nativos para agilizar o uso na quadra.
+   ========================================================= */
+.chegada-atrasada-modal {
+  max-width: 640px;
+}
+
+.chegada-atrasada-intro {
+  margin-bottom: 18px;
+}
+
+.chegada-busca {
+  width: 100%;
+  min-width: 0;
+}
+
+.chegada-busca > label {
+  display: block;
+  margin-bottom: 7px;
+  color: #294537;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.8px;
+}
+
+.chegada-busca-campo {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+  padding: 0 13px;
+  border: 1px solid #cedbd2;
+  border-radius: 11px;
+  background: #f8fbf9;
+}
+
+.chegada-busca-campo:focus-within {
+  border-color: #16834f;
+  box-shadow: 0 0 0 3px rgba(22, 131, 79, 0.08);
+}
+
+.chegada-busca-campo > span {
+  flex: 0 0 auto;
+  color: #16834f;
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.chegada-busca-campo input {
+  width: 100%;
+  min-width: 0;
+  padding: 13px 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #294537;
+  font: inherit;
+}
+
+.chegada-lista-jogadores {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  max-height: 285px;
+  margin-top: 12px;
+  padding-right: 3px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chegada-jogador-card {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: 42px minmax(0, 1fr) auto 26px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #dce8e0;
+  border-radius: 12px;
+  background: #fff;
+  color: #294537;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chegada-jogador-card:hover {
+  border-color: #9cc8ae;
+  background: #f7faf8;
+}
+
+.chegada-jogador-card.selecionado {
+  border: 2px solid #16834f;
+  padding: 9px 11px;
+  background: #edf7f1;
+}
+
+.chegada-jogador-avatar {
+  display: flex;
+  width: 42px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #e2f0e7;
+  color: #14623c;
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.chegada-jogador-dados {
+  min-width: 0;
+}
+
+.chegada-jogador-dados strong,
+.chegada-jogador-dados small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chegada-jogador-dados strong {
+  font-size: 14px;
+}
+
+.chegada-jogador-dados small {
+  margin-top: 2px;
+  color: #7b8880;
+  font-size: 11px;
+}
+
+.chegada-jogador-tipo {
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #f0f6f2;
+  color: #557064;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.chegada-jogador-check {
+  display: flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d3dfd7;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.chegada-jogador-card.selecionado .chegada-jogador-check {
+  border-color: #16834f;
+  background: #16834f;
+}
+
+.chegada-lista-vazia {
+  padding: 22px 14px;
+  border: 1px dashed #cddbd2;
+  border-radius: 12px;
+  background: #fafcfb;
+  text-align: center;
+}
+
+.chegada-lista-vazia strong,
+.chegada-lista-vazia span {
+  display: block;
+}
+
+.chegada-lista-vazia strong {
+  color: #40594b;
+}
+
+.chegada-lista-vazia span {
+  margin-top: 4px;
+  color: #7b8880;
+  font-size: 12px;
+}
+
+.chegada-funcao-bloco {
+  width: 100%;
+  min-width: 0;
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid #dce8e0;
+  border-radius: 13px;
+  background: #f8fbf9;
+}
+
+.chegada-funcao-titulo strong,
+.chegada-funcao-titulo span {
+  display: block;
+}
+
+.chegada-funcao-titulo strong {
+  color: #294537;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.7px;
+}
+
+.chegada-funcao-titulo span {
+  margin-top: 3px;
+  color: #7b8880;
+  font-size: 11px;
+}
+
+.chegada-funcao-opcoes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin-top: 11px;
+}
+
+.chegada-funcao-opcoes button {
+  display: flex;
+  min-width: 0;
+  min-height: 50px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid #d4dfd8;
+  border-radius: 10px;
+  background: #fff;
+  color: #52655a;
+  cursor: pointer;
+}
+
+.chegada-funcao-opcoes button strong {
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.chegada-funcao-opcoes button.selecionada {
+  border-color: #16834f;
+  background: #16834f;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(22, 131, 79, 0.18);
+}
+
+.chegada-cadastro-cabecalho {
+  margin: 17px 0 15px;
+  padding: 13px 14px;
+  border-left: 4px solid #16834f;
+  border-radius: 9px;
+  background: #edf7f1;
+}
+
+.chegada-cadastro-cabecalho strong,
+.chegada-cadastro-cabecalho span {
+  display: block;
+}
+
+.chegada-cadastro-cabecalho strong {
+  color: #145c39;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.chegada-cadastro-cabecalho span {
+  margin-top: 3px;
+  color: #68776e;
+  font-size: 12px;
+}
+
+.chegada-funcao-cadastro {
+  margin-top: 12px;
+}
+
+.btn-chegada-novo {
+  padding: 10px 14px;
+  border: 1px dashed #9bada2;
+  border-radius: 9px;
+  background: #fafcfb;
+  color: #40594b;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.btn-confirmar-chegada {
+  min-height: 44px;
+}
+
+.chegada-atrasada-erro {
+  margin-top: 12px;
+  background: #fff2ee;
+  color: #9b503d;
+}
+
+@media (max-width: 600px) {
+  .chegada-atrasada-modal {
+    width: 100%;
+    max-width: none;
+    max-height: 92vh;
+  }
+
+  .chegada-lista-jogadores {
+    max-height: 250px;
+  }
+
+  .chegada-jogador-card {
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+  }
+
+  .chegada-jogador-avatar {
+    width: 40px;
+    height: 40px;
+  }
+
+  .chegada-jogador-tipo {
+    display: none;
+  }
+
+  .chegada-jogador-check {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .chegada-funcao-opcoes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .chegada-atrasada-acoes-principal {
+    display: flex;
+    flex-direction: column-reverse;
+  }
+}
+
+@media (max-width: 380px) {
+  .chegada-funcao-opcoes button {
+    gap: 4px;
+    padding: 9px 6px;
+  }
+
+  .chegada-funcao-opcoes button strong {
+    font-size: 10px;
+  }
+}

@@ -250,6 +250,80 @@ export async function marcarChegadaAtrasada(
   )
 }
 
+
+
+export type DadosChegadaAtrasada = {
+  jogadorId: number
+  nomeImportado: string
+  tipoSessao: TipoJogador
+}
+
+/*
+ * Registra uma chegada depois que a pelada já começou.
+ * A ordem é calculada dentro da mesma transação para que dois registros
+ * consecutivos nunca recebam a mesma posição na fila de atrasados.
+ *
+ * Se o jogador já estava na lista como ausente, reaproveitamos o registro.
+ * Se não estava na lista, criamos sua participação diretamente na sessão.
+ */
+export async function registrarChegadaAtrasada(
+  sessaoId: number,
+  dados: DadosChegadaAtrasada,
+): Promise<SessaoParticipanteDB> {
+  const db = await obterBanco()
+  const tx = db.transaction('sessao_participantes', 'readwrite')
+  const store = tx.objectStore('sessao_participantes')
+
+  const existente = await store.index('por-sessao-jogador').get([
+    sessaoId,
+    dados.jogadorId,
+  ])
+
+  if (existente?.presente) {
+    throw new Error('Este jogador já está presente nesta pelada.')
+  }
+
+  const participantes = await store.index('por-sessao').getAll(sessaoId)
+  const maiorOrdem = participantes.reduce(
+    (maior, participante) =>
+      Math.max(maior, participante.ordemChegada ?? 0),
+    0,
+  )
+
+  const agora = new Date().toISOString()
+  const ordemChegada = maiorOrdem + 1
+
+  if (existente) {
+    existente.nomeImportado = dados.nomeImportado.trim()
+    existente.presente = true
+    existente.tipoSessao = dados.tipoSessao
+    existente.chegouAtrasado = true
+    existente.ordemChegada = ordemChegada
+    existente.atualizadoEm = agora
+
+    await store.put(existente)
+    await tx.done
+    return existente
+  }
+
+  const novo: SessaoParticipanteDB = {
+    sessaoId,
+    jogadorId: dados.jogadorId,
+    nomeImportado: dados.nomeImportado.trim(),
+    presente: true,
+    tipoSessao: dados.tipoSessao,
+    chegouAtrasado: true,
+    ordemChegada,
+    criadoEm: agora,
+    atualizadoEm: agora,
+  }
+
+  const id = await store.add(novo)
+  await tx.done
+
+  return { ...novo, id }
+}
+
 /*
  * Salva o sorteio inicial dos goleiros de uma única vez.
  * O resultado é persistido para que F5/reabertura nunca refaça

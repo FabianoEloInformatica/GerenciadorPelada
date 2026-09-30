@@ -25,6 +25,7 @@ import {
   buscarSugestoesJogador,
   buscarJogadorPorId,
   cadastrarJogador,
+  listarJogadores,
   type CorrespondenciaJogador,
   type SugestaoJogador,
 } from '../db/jogadoresRepository'
@@ -37,6 +38,7 @@ import {
   listarParticipantesSessao,
   listarSessoes,
   listarSorteioInicialGoleiros,
+  registrarChegadaAtrasada,
   salvarParticipanteSessao,
   salvarSorteioInicialGoleiros,
   salvarParticipantesSessao,
@@ -65,6 +67,8 @@ type ParticipantePresenca = {
   nomeLista: string
   funcaoHoje: 'LINHA' | 'GOLEIRO'
   presente: boolean
+  chegouAtrasado?: boolean
+  ordemChegada?: number
 }
 
 type ResultadoSorteioGoleiro = {
@@ -149,6 +153,19 @@ export default function NovaPelada() {
     useState<PartidaEmAndamentoCompleta | null>(null)
   const [agoraRelogio, setAgoraRelogio] = useState(Date.now())
   const [alterandoPausa, setAlterandoPausa] = useState(false)
+  const [organizacaoAberta, setOrganizacaoAberta] = useState(false)
+  const [chegadaAtrasadaAberta, setChegadaAtrasadaAberta] = useState(false)
+  const [jogadoresChegada, setJogadoresChegada] = useState<JogadorDB[]>([])
+  const [jogadorChegadaId, setJogadorChegadaId] = useState<number | null>(null)
+  const [buscaChegada, setBuscaChegada] = useState('')
+  const [tipoChegada, setTipoChegada] = useState<'LINHA' | 'GOLEIRO'>('LINHA')
+  const [salvandoChegada, setSalvandoChegada] = useState(false)
+  const [erroChegada, setErroChegada] = useState('')
+  const [cadastroChegadaAberto, setCadastroChegadaAberto] = useState(false)
+  const [chegadaNomeCompleto, setChegadaNomeCompleto] = useState('')
+  const [chegadaNomeExibicao, setChegadaNomeExibicao] = useState('')
+  const [chegadaApelidos, setChegadaApelidos] = useState('')
+  const [chegadaTipoPadrao, setChegadaTipoPadrao] = useState<'LINHA' | 'GOLEIRO'>('LINHA')
 
   const [dataPelada, setDataPelada] = useState(hojeFormatoInput())
   const [textoLista, setTextoLista] = useState('')
@@ -295,8 +312,62 @@ export default function NovaPelada() {
           )
 
           if (partida) {
+            /*
+             * A partida e a organização usam a mesma sessão.
+             * Por isso, ao recuperar uma pelada em andamento, também reconstruímos
+             * participantes e sorteios. Assim a fila continua disponível após F5.
+             */
+            const participantesSalvos = await listarParticipantesSessao(
+              sessaoAndamento.id,
+            )
+
+            const participantesRecuperados = await Promise.all(
+              participantesSalvos.map(async (participante) => {
+                const jogador = await buscarJogadorPorId(participante.jogadorId)
+                if (!jogador) return null
+
+                return {
+                  jogador,
+                  nomeLista: participante.nomeImportado,
+                  funcaoHoje: participante.tipoSessao,
+                  presente: participante.presente,
+                } satisfies ParticipantePresenca
+              }),
+            )
+
+            const participantesValidos = participantesRecuperados.filter(
+              (item): item is NonNullable<typeof item> => item !== null,
+            )
+
+            const sorteioGoleirosSalvo = await listarSorteioInicialGoleiros(
+              sessaoAndamento.id,
+            )
+
+            const goleirosRecuperados = await Promise.all(
+              sorteioGoleirosSalvo.map(async (item) => {
+                const jogador = await buscarJogadorPorId(item.jogadorId)
+                if (!jogador) return null
+
+                return {
+                  jogador,
+                  numeroSorteado: item.numeroSorteado,
+                  ordem: item.ordem,
+                  corColete: item.corColete,
+                } satisfies ResultadoSorteioGoleiro
+              }),
+            )
+
             setDataPelada(sessaoAndamento.data)
             setSessaoEmAndamentoId(sessaoAndamento.id)
+            setSessaoCriadaId(sessaoAndamento.id)
+            setParticipantesPresenca(participantesValidos)
+            setResultadoSorteioGoleiros(
+              goleirosRecuperados
+                .filter(
+                  (item): item is NonNullable<typeof item> => item !== null,
+                )
+                .sort((a, b) => a.ordem - b.ordem),
+            )
             setPartidaEmAndamento(partida)
             return
           }
@@ -328,12 +399,14 @@ export default function NovaPelada() {
               nomeLista: participante.nomeImportado,
               funcaoHoje: participante.tipoSessao,
               presente: participante.presente,
+              chegouAtrasado: participante.chegouAtrasado,
+              ordemChegada: participante.ordemChegada,
             } satisfies ParticipantePresenca
           }),
         )
 
         const participantesValidos = participantesRecuperados
-          .filter((item): item is ParticipantePresenca => item !== null)
+          .filter((item): item is NonNullable<typeof item> => item !== null)
           .sort((a, b) =>
             a.jogador.nomeExibicao.localeCompare(b.jogador.nomeExibicao, 'pt-BR', {
               sensitivity: 'base',
@@ -1132,6 +1205,134 @@ export default function NovaPelada() {
     alert('A finalização será ligada junto das regras de vitória, empate e rotação.')
   }
 
+  async function recarregarParticipantesSessaoAtiva(sessaoId: number) {
+    const registros = await listarParticipantesSessao(sessaoId)
+    const participantes = await Promise.all(
+      registros.map(async (participante) => {
+        const jogador = await buscarJogadorPorId(participante.jogadorId)
+        if (!jogador) return null
+
+        return {
+          jogador,
+          nomeLista: participante.nomeImportado,
+          funcaoHoje: participante.tipoSessao,
+          presente: participante.presente,
+          chegouAtrasado: participante.chegouAtrasado,
+          ordemChegada: participante.ordemChegada,
+        } satisfies ParticipantePresenca
+      }),
+    )
+
+    setParticipantesPresenca(
+      participantes.filter(
+        (item): item is NonNullable<typeof item> => item !== null,
+      ),
+    )
+  }
+
+  async function abrirChegadaAtrasada() {
+    setErroChegada('')
+    setCadastroChegadaAberto(false)
+    setJogadorChegadaId(null)
+    setBuscaChegada('')
+    setTipoChegada('LINHA')
+
+    try {
+      const jogadores = await listarJogadores()
+      setJogadoresChegada(jogadores.filter((jogador) => jogador.ativo))
+      setChegadaAtrasadaAberta(true)
+    } catch (erro) {
+      console.error('Erro ao carregar jogadores para chegada atrasada:', erro)
+      window.alert('Não foi possível carregar os jogadores cadastrados.')
+    }
+  }
+
+  function fecharChegadaAtrasada() {
+    if (salvandoChegada) return
+    setChegadaAtrasadaAberta(false)
+    setCadastroChegadaAberto(false)
+    setErroChegada('')
+  }
+
+  async function confirmarChegadaAtrasada() {
+    if (sessaoEmAndamentoId === null || jogadorChegadaId === null) return
+
+    const jogador = jogadoresChegada.find(
+      (item) => item.id === jogadorChegadaId,
+    )
+    if (!jogador) return
+
+    setSalvandoChegada(true)
+    setErroChegada('')
+
+    try {
+      await registrarChegadaAtrasada(sessaoEmAndamentoId, {
+        jogadorId: jogadorChegadaId,
+        nomeImportado: jogador.nomeExibicao,
+        tipoSessao: tipoChegada,
+      })
+
+      await recarregarParticipantesSessaoAtiva(sessaoEmAndamentoId)
+      setChegadaAtrasadaAberta(false)
+      setJogadorChegadaId(null)
+    } catch (erro) {
+      console.error('Erro ao registrar chegada atrasada:', erro)
+      setErroChegada(
+        erro instanceof Error
+          ? erro.message
+          : 'Não foi possível registrar a chegada.',
+      )
+    } finally {
+      setSalvandoChegada(false)
+    }
+  }
+
+  async function cadastrarERegistrarChegada() {
+    if (sessaoEmAndamentoId === null) return
+
+    if (!chegadaNomeCompleto.trim() || !chegadaNomeExibicao.trim()) {
+      setErroChegada('Informe o nome completo e o nome de exibição.')
+      return
+    }
+
+    setSalvandoChegada(true)
+    setErroChegada('')
+
+    try {
+      const novoId = await cadastrarJogador({
+        nomeCompleto: chegadaNomeCompleto,
+        nomeExibicao: chegadaNomeExibicao,
+        apelidos: chegadaApelidos
+          .split(',')
+          .map((apelido) => apelido.trim())
+          .filter(Boolean),
+        tipoPadrao: chegadaTipoPadrao,
+      })
+
+      await registrarChegadaAtrasada(sessaoEmAndamentoId, {
+        jogadorId: novoId,
+        nomeImportado: chegadaNomeExibicao.trim(),
+        tipoSessao: tipoChegada,
+      })
+
+      await recarregarParticipantesSessaoAtiva(sessaoEmAndamentoId)
+      setChegadaNomeCompleto('')
+      setChegadaNomeExibicao('')
+      setChegadaApelidos('')
+      setChegadaAtrasadaAberta(false)
+      setCadastroChegadaAberto(false)
+    } catch (erro) {
+      console.error('Erro ao cadastrar chegada atrasada:', erro)
+      setErroChegada(
+        erro instanceof Error
+          ? erro.message
+          : 'Não foi possível cadastrar o jogador.',
+      )
+    } finally {
+      setSalvandoChegada(false)
+    }
+  }
+
   async function descartarPeladaEmPreparacao() {
     if (sessaoCriadaId === null) return
 
@@ -1306,6 +1507,235 @@ export default function NovaPelada() {
             </div>
             <button type="button" className={`btn-pausa-partida ${partida.pausada ? 'retomar' : ''}`} onClick={alternarPausaPartida} disabled={alterandoPausa}>{alterandoPausa ? 'SALVANDO...' : partida.pausada ? '▶ RETOMAR PARTIDA' : 'Ⅱ PAUSAR PARTIDA'}</button>
             <button type="button" className="btn-finalizar-partida" onClick={finalizarPartidaEmBreve}>FINALIZAR PARTIDA</button>
+
+            {(() => {
+              /*
+               * Grupos 1 e 2 estão na partida atual. A organização mostra somente
+               * os grupos seguintes, preservando a ordem oficial do sorteio inicial.
+               */
+              const numerosGrupos = Array.from(
+                new Set(resultadoSorteioLinha.map((item) => item.grupo)),
+              )
+                .filter((grupo) => grupo > 2)
+                .sort((a, b) => a - b)
+
+              const quantidadeLinha =
+                configuracaoPelada?.jogadoresLinhaPorTime ?? 4
+
+              const gruposOrganizacao = numerosGrupos.map((numeroGrupo) => {
+                const jogadores = resultadoSorteioLinha
+                  .filter((item) => item.grupo === numeroGrupo)
+                  .sort((a, b) => a.posicaoNoGrupo - b.posicaoNoGrupo)
+
+                const goleiro = resultadoSorteioGoleiros.find(
+                  (item) => item.ordem === numeroGrupo,
+                )
+
+                const vagasLinha = Math.max(
+                  0,
+                  quantidadeLinha - jogadores.length,
+                )
+
+                return {
+                  numeroGrupo,
+                  jogadores,
+                  goleiro,
+                  vagasLinha,
+                  completo: vagasLinha === 0 && Boolean(goleiro),
+                }
+              })
+
+              const prontos = gruposOrganizacao.filter(
+                (grupo) => grupo.completo,
+              ).length
+
+              const incompletos = gruposOrganizacao.length - prontos
+
+              const filaAtrasados = participantesPresenca
+                .filter(
+                  (participante) =>
+                    participante.presente && participante.chegouAtrasado,
+                )
+                .sort(
+                  (a, b) =>
+                    (a.ordemChegada ?? Number.MAX_SAFE_INTEGER) -
+                    (b.ordemChegada ?? Number.MAX_SAFE_INTEGER),
+                )
+
+              return (
+                <div className="organizacao-operacional">
+                  <button
+                    type="button"
+                    className={`btn-organizacao-fila ${
+                      organizacaoAberta ? 'aberto' : ''
+                    }`}
+                    onClick={() => setOrganizacaoAberta((aberta) => !aberta)}
+                    aria-expanded={organizacaoAberta}
+                  >
+                    <span>
+                      <strong>ORGANIZAÇÃO / FILA</strong>
+                      <small>
+                        {gruposOrganizacao.length === 0
+                          ? 'Nenhum time futuro formado'
+                          : `${prontos} pronto(s) • ${incompletos} incompleto(s)`}
+                      </small>
+                    </span>
+                    <b>{organizacaoAberta ? '▲' : '▼'}</b>
+                  </button>
+
+                  {organizacaoAberta && (
+                    <div className="organizacao-conteudo">
+                      <div className="organizacao-aviso">
+                        <strong>Partida continua normalmente</strong>
+                        <span>
+                          Abrir esta área não pausa nem altera o cronômetro.
+                        </span>
+                      </div>
+
+                      <div className="organizacao-acoes">
+                        <button
+                          type="button"
+                          className="btn-chegada-atrasada"
+                          onClick={abrirChegadaAtrasada}
+                        >
+                          + CHEGADA ATRASADA
+                        </button>
+                      </div>
+
+                      {filaAtrasados.length > 0 && (
+                        <div className="fila-atrasados">
+                          <div className="fila-atrasados-titulo">
+                            <strong>CHEGADAS ATRASADAS</strong>
+                            <span>{filaAtrasados.length} aguardando organização</span>
+                          </div>
+
+                          {filaAtrasados.map((participante) => (
+                            <div
+                              className="fila-atrasado-item"
+                              key={`atrasado-${participante.jogador.id}`}
+                            >
+                              <span>#{participante.ordemChegada}</span>
+                              <strong>{participante.jogador.nomeExibicao}</strong>
+                              <small>
+                                {participante.funcaoHoje === 'GOLEIRO'
+                                  ? 'Goleiro'
+                                  : 'Linha'}
+                              </small>
+                            </div>
+                          ))}
+
+                          <p>
+                            Nesta etapa a chegada é registrada e persistida. O
+                            preenchimento de vagas e as tampinhas serão aplicados
+                            na próxima regra operacional.
+                          </p>
+                        </div>
+                      )}
+
+                      {gruposOrganizacao.length === 0 ? (
+                        <div className="organizacao-vazia">
+                          <strong>Nenhum próximo time disponível.</strong>
+                          <span>
+                            Quando houver grupos seguintes, eles aparecerão aqui
+                            na ordem da fila.
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="organizacao-times-grid">
+                          {gruposOrganizacao.map((grupo) => {
+                            const letraTime = String.fromCharCode(
+                              64 + grupo.numeroGrupo,
+                            )
+
+                            return (
+                              <article
+                                className={`organizacao-time ${
+                                  grupo.completo ? 'completo' : 'incompleto'
+                                }`}
+                                key={`organizacao-grupo-${grupo.numeroGrupo}`}
+                              >
+                                <div className="organizacao-time-topo">
+                                  <div>
+                                    <span>
+                                      TIME {letraTime} • GRUPO {grupo.numeroGrupo}
+                                    </span>
+                                    <strong>
+                                      {grupo.completo
+                                        ? 'PRONTO PARA JOGAR'
+                                        : 'INCOMPLETO'}
+                                    </strong>
+                                  </div>
+
+                                  <span
+                                    className={`organizacao-status ${
+                                      grupo.completo ? 'pronto' : 'pendente'
+                                    }`}
+                                  >
+                                    {grupo.completo ? 'PRONTO' : 'AGUARDANDO'}
+                                  </span>
+                                </div>
+
+                                <div className="organizacao-goleiro">
+                                  <span>GOLEIRO</span>
+                                  <strong>
+                                    {grupo.goleiro
+                                      ? grupo.goleiro.jogador.nomeExibicao
+                                      : 'Aguardando goleiro'}
+                                  </strong>
+                                </div>
+
+                                <div className="organizacao-jogadores">
+                                  {grupo.jogadores.map((jogador) => (
+                                    <div
+                                      key={`organizacao-jogador-${jogador.jogador.id}`}
+                                    >
+                                      <span>
+                                        #{jogador.numeroSorteado}
+                                      </span>
+                                      <strong>
+                                        {jogador.jogador.nomeExibicao}
+                                      </strong>
+                                    </div>
+                                  ))}
+
+                                  {Array.from(
+                                    { length: grupo.vagasLinha },
+                                    (_, indice) => (
+                                      <div
+                                        className="organizacao-vaga"
+                                        key={`organizacao-vaga-${grupo.numeroGrupo}-${indice}`}
+                                      >
+                                        <span>+</span>
+                                        <strong>Vaga disponível</strong>
+                                      </div>
+                                    ),
+                                  )}
+                                </div>
+
+                                <div className="organizacao-time-rodape">
+                                  <span>
+                                    {grupo.jogadores.length}/{quantidadeLinha}{' '}
+                                    jogadores de linha
+                                  </span>
+                                  <strong>
+                                    {grupo.vagasLinha > 0
+                                      ? `${grupo.vagasLinha} vaga(s)`
+                                      : grupo.goleiro
+                                        ? 'Formação completa'
+                                        : 'Falta goleiro'}
+                                  </strong>
+                                </div>
+                              </article>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+
             <p className="partida-operacional-rodape">Sessão #{sessaoEmAndamentoId} • relógio e pausa recuperáveis após F5</p>
           </section>
         )
@@ -2273,6 +2703,281 @@ export default function NovaPelada() {
       })()}
 
         </>
+      )}
+
+      {chegadaAtrasadaAberta && (
+        <div className="identificacao-overlay" onClick={fecharChegadaAtrasada}>
+          <div
+            className="identificacao-modal chegada-atrasada-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="identificacao-modal-cabecalho">
+              <div>
+                <span>ORGANIZAÇÃO / FILA</span>
+                <h2>Chegada atrasada</h2>
+              </div>
+              <button
+                type="button"
+                className="btn-fechar-identificacao"
+                onClick={fecharChegadaAtrasada}
+                aria-label="Fechar"
+              >
+                ×
+              </button>
+            </div>
+
+            {!cadastroChegadaAberto ? (
+              <>
+                <p className="identificacao-explicacao chegada-atrasada-intro">
+                  Selecione quem acabou de chegar. A chegada será registrada sem
+                  alterar o sorteio inicial já realizado.
+                </p>
+
+                <div className="chegada-busca">
+                  <label htmlFor="busca-chegada">BUSCAR JOGADOR</label>
+                  <div className="chegada-busca-campo">
+                    <span aria-hidden="true">⌕</span>
+                    <input
+                      id="busca-chegada"
+                      type="text"
+                      value={buscaChegada}
+                      onChange={(event) => setBuscaChegada(event.target.value)}
+                      placeholder="Digite o nome ou apelido..."
+                      autoFocus
+                    />
+                  </div>
+                </div>
+
+                <div className="chegada-lista-jogadores">
+                  {jogadoresChegada
+                    .filter((jogador) => {
+                      const jaPresente = participantesPresenca.some(
+                        (participante) =>
+                          participante.jogador.id === jogador.id && participante.presente,
+                      )
+                      if (jaPresente) return false
+
+                      const termo = buscaChegada.trim().toLocaleLowerCase('pt-BR')
+                      if (!termo) return true
+
+                      return [
+                        jogador.nomeExibicao,
+                        jogador.nomeCompleto,
+                        ...jogador.apelidos,
+                      ].some((valor) =>
+                        valor.toLocaleLowerCase('pt-BR').includes(termo),
+                      )
+                    })
+                    .map((jogador) => {
+                      const selecionado = jogadorChegadaId === jogador.id
+                      return (
+                        <button
+                          key={jogador.id}
+                          type="button"
+                          className={`chegada-jogador-card${selecionado ? ' selecionado' : ''}`}
+                          onClick={() => {
+                            setJogadorChegadaId(jogador.id ?? null)
+                            setTipoChegada(jogador.tipoPadrao)
+                            setErroChegada('')
+                          }}
+                        >
+                          <span className="chegada-jogador-avatar">
+                            {jogador.nomeExibicao.trim().charAt(0).toUpperCase()}
+                          </span>
+                          <span className="chegada-jogador-dados">
+                            <strong>{jogador.nomeExibicao}</strong>
+                            <small>{jogador.nomeCompleto}</small>
+                          </span>
+                          <span className="chegada-jogador-tipo">
+                            {jogador.tipoPadrao === 'GOLEIRO' ? 'GOLEIRO' : 'LINHA'}
+                          </span>
+                          <span className="chegada-jogador-check" aria-hidden="true">
+                            {selecionado ? '✓' : ''}
+                          </span>
+                        </button>
+                      )
+                    })}
+
+                  {jogadoresChegada.filter((jogador) => {
+                    const jaPresente = participantesPresenca.some(
+                      (participante) =>
+                        participante.jogador.id === jogador.id && participante.presente,
+                    )
+                    if (jaPresente) return false
+                    const termo = buscaChegada.trim().toLocaleLowerCase('pt-BR')
+                    if (!termo) return true
+                    return [jogador.nomeExibicao, jogador.nomeCompleto, ...jogador.apelidos]
+                      .some((valor) => valor.toLocaleLowerCase('pt-BR').includes(termo))
+                  }).length === 0 && (
+                    <div className="chegada-lista-vazia">
+                      <strong>Nenhum jogador disponível</strong>
+                      <span>Confira a busca ou cadastre um novo jogador.</span>
+                    </div>
+                  )}
+                </div>
+
+                {jogadorChegadaId !== null && (
+                  <div className="chegada-funcao-bloco">
+                    <div className="chegada-funcao-titulo">
+                      <strong>FUNÇÃO NESTA PELADA</strong>
+                      <span>Escolha como ele vai participar hoje.</span>
+                    </div>
+                    <div className="chegada-funcao-opcoes">
+                      <button
+                        type="button"
+                        className={tipoChegada === 'LINHA' ? 'selecionada' : ''}
+                        onClick={() => setTipoChegada('LINHA')}
+                      >
+                        <span>⚽</span>
+                        <strong>JOGADOR DE LINHA</strong>
+                      </button>
+                      <button
+                        type="button"
+                        className={tipoChegada === 'GOLEIRO' ? 'selecionada' : ''}
+                        onClick={() => setTipoChegada('GOLEIRO')}
+                      >
+                        <span>🥅</span>
+                        <strong>GOLEIRO</strong>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {erroChegada && (
+                  <div className="chegada-atrasada-erro">{erroChegada}</div>
+                )}
+
+                <div className="chegada-atrasada-acoes chegada-atrasada-acoes-principal">
+                  <button
+                    type="button"
+                    className="btn-chegada-novo"
+                    onClick={() => {
+                      setCadastroChegadaAberto(true)
+                      setErroChegada('')
+                    }}
+                    disabled={salvandoChegada}
+                  >
+                    + JOGADOR NÃO CADASTRADO
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-confirmar-identificacao btn-confirmar-chegada"
+                    onClick={confirmarChegadaAtrasada}
+                    disabled={salvandoChegada || jogadorChegadaId === null}
+                  >
+                    {salvandoChegada ? 'SALVANDO...' : 'CONFIRMAR CHEGADA'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="chegada-cadastro-cabecalho">
+                  <strong>NOVO JOGADOR</strong>
+                  <span>Cadastre e registre a chegada sem sair da pelada.</span>
+                </div>
+
+                <div className="nova-pelada-campo">
+                  <label>Nome completo</label>
+                  <input
+                    type="text"
+                    value={chegadaNomeCompleto}
+                    onChange={(event) => setChegadaNomeCompleto(event.target.value)}
+                    autoFocus
+                  />
+                </div>
+                <div className="nova-pelada-campo">
+                  <label>Nome de exibição</label>
+                  <input
+                    type="text"
+                    value={chegadaNomeExibicao}
+                    onChange={(event) => setChegadaNomeExibicao(event.target.value)}
+                  />
+                </div>
+                <div className="nova-pelada-campo">
+                  <label>Apelidos</label>
+                  <input
+                    type="text"
+                    value={chegadaApelidos}
+                    onChange={(event) => setChegadaApelidos(event.target.value)}
+                    placeholder="Separe por vírgula"
+                  />
+                </div>
+
+                <div className="chegada-funcao-bloco chegada-funcao-cadastro">
+                  <div className="chegada-funcao-titulo">
+                    <strong>POSIÇÃO HABITUAL</strong>
+                  </div>
+                  <div className="chegada-funcao-opcoes">
+                    <button
+                      type="button"
+                      className={chegadaTipoPadrao === 'LINHA' ? 'selecionada' : ''}
+                      onClick={() => setChegadaTipoPadrao('LINHA')}
+                    >
+                      <span>⚽</span><strong>LINHA</strong>
+                    </button>
+                    <button
+                      type="button"
+                      className={chegadaTipoPadrao === 'GOLEIRO' ? 'selecionada' : ''}
+                      onClick={() => setChegadaTipoPadrao('GOLEIRO')}
+                    >
+                      <span>🥅</span><strong>GOLEIRO</strong>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="chegada-funcao-bloco chegada-funcao-cadastro">
+                  <div className="chegada-funcao-titulo">
+                    <strong>FUNÇÃO NESTA PELADA</strong>
+                  </div>
+                  <div className="chegada-funcao-opcoes">
+                    <button
+                      type="button"
+                      className={tipoChegada === 'LINHA' ? 'selecionada' : ''}
+                      onClick={() => setTipoChegada('LINHA')}
+                    >
+                      <span>⚽</span><strong>LINHA</strong>
+                    </button>
+                    <button
+                      type="button"
+                      className={tipoChegada === 'GOLEIRO' ? 'selecionada' : ''}
+                      onClick={() => setTipoChegada('GOLEIRO')}
+                    >
+                      <span>🥅</span><strong>GOLEIRO</strong>
+                    </button>
+                  </div>
+                </div>
+
+                {erroChegada && (
+                  <div className="chegada-atrasada-erro">{erroChegada}</div>
+                )}
+
+                <div className="identificacao-acoes chegada-atrasada-acoes">
+                  <button
+                    type="button"
+                    className="btn-cancelar-identificacao"
+                    onClick={() => setCadastroChegadaAberto(false)}
+                    disabled={salvandoChegada}
+                  >
+                    VOLTAR
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-confirmar-identificacao"
+                    onClick={cadastrarERegistrarChegada}
+                    disabled={
+                      salvandoChegada ||
+                      !chegadaNomeCompleto.trim() ||
+                      !chegadaNomeExibicao.trim()
+                    }
+                  >
+                    {salvandoChegada ? 'SALVANDO...' : 'CADASTRAR E REGISTRAR'}
+                  </button>
+                </div>
+              </>
+            )}
+
+          </div>
+        </div>
       )}
 
       {jogadorEmIdentificacao && (
