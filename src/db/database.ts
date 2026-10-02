@@ -117,6 +117,8 @@ export type SorteioLinhaInicialDB = {
 
 
 export type StatusPartida = 'EM_ANDAMENTO' | 'FINALIZADA'
+export type ResultadoPartida = 'TIME1' | 'TIME2' | 'EMPATE'
+export type MotivoFinalizacaoPartida = 'MANUAL' | 'LIMITE_GOLS' | 'TEMPO'
 
 export type PartidaDB = {
   id?: number
@@ -127,6 +129,14 @@ export type PartidaDB = {
   placarTime2: number
   iniciadaEm: string
   finalizadaEm?: string
+
+  // Resultado oficial da queda, usado depois pela rotação.
+  resultado?: ResultadoPartida
+  ladoVencedor?: 1 | 2
+  ladoPerdedor?: 1 | 2
+  motivoFinalizacao?: MotivoFinalizacaoPartida
+  tempoFinalMs?: number
+
   // Relógio persistido: permite F5, bloqueio da tela e pausas sem perder o tempo.
   pausada: boolean
   pausadaEm?: string
@@ -155,6 +165,95 @@ export type PartidaJogadorDB = {
   criadoEm: string
 }
 
+export type TampinhaEmpateDB = {
+  id?: number
+  sessaoId: number
+  partidaId: number
+  numeroLado1: number
+  numeroLado2: number
+  ladoVencedor: 1 | 2
+  ladoPerdedor: 1 | 2
+  maiorNumeroVence: boolean
+  criadoEm: string
+}
+
+export type PrioridadeFilaOperacional =
+  | 'NAO_JOGOU'
+  | 'CHEGADA_ATRASADA'
+  | 'RETORNO'
+
+export type StatusFilaOperacional = 'AGUARDANDO' | 'EM_QUADRA'
+
+export type FilaOperacionalDB = {
+  id?: number
+  sessaoId: number
+  jogadorId: number
+  funcao: TipoJogador
+  prioridade: PrioridadeFilaOperacional
+  status: StatusFilaOperacional
+  ordem: number
+  grupoOrigem?: number
+  criadoEm: string
+  atualizadoEm: string
+}
+
+
+
+export type StatusFormacaoOperacional = 'AGUARDANDO' | 'EM_QUADRA'
+
+/*
+ * Versão 13: a formação operacional passa a ter identidade própria.
+ * O grupo do sorteio inicial continua histórico e não precisa mais ser
+ * reutilizado como identidade mutável durante rotações e cascatas.
+ */
+export type FormacaoOperacionalDB = {
+  id?: number
+  sessaoId: number
+  ordem: number
+  status: StatusFormacaoOperacional
+  prioridade: PrioridadeFilaOperacional
+  grupoHistorico?: number
+  criadoEm: string
+  atualizadoEm: string
+}
+
+export type FormacaoOperacionalMembroDB = {
+  id?: number
+  sessaoId: number
+  formacaoId: number
+  jogadorId: number
+  funcao: TipoJogador
+  ordem: number
+  criadoEm: string
+  atualizadoEm: string
+}
+
+export type TampinhaSubstituicaoDB = {
+  id?: number
+  sessaoId: number
+  grupo: number
+  jogadorEntrandoId: number
+  jogadorSaindoId: number
+  numeros: Array<{ jogadorId: number; numero: number }>
+  menorNumeroSai: boolean
+  criadoEm: string
+}
+
+export type TipoEventoPartida = 'GOL' | 'GOL_CONTRA'
+
+export type PartidaEventoDB = {
+  id?: number
+  partidaId: number
+  tipo: TipoEventoPartida
+  // O lado beneficiado é sempre o time cujo placar aumenta.
+  ladoBeneficiado: 1 | 2
+  // Em GOL é o autor. Em GOL_CONTRA fica vazio para não creditar o adversário.
+  jogadorId?: number
+  // Tempo efetivo da partida no evento, descontando pausas.
+  tempoJogoMs: number
+  criadoEm: string
+}
+
 interface GerenciadorPeladaDB extends DBSchema {
 
 
@@ -165,6 +264,68 @@ interface GerenciadorPeladaDB extends DBSchema {
       'por-sessao': number
       'por-sessao-numero': [number, number]
       'por-status': StatusPartida
+    }
+  }
+
+
+
+
+  formacoes_operacionais: {
+    key: number
+    value: FormacaoOperacionalDB
+    indexes: {
+      'por-sessao': number
+      'por-sessao-status': [number, StatusFormacaoOperacional]
+      'por-sessao-ordem': [number, number]
+    }
+  }
+
+  formacao_operacional_membros: {
+    key: number
+    value: FormacaoOperacionalMembroDB
+    indexes: {
+      'por-sessao': number
+      'por-formacao': number
+      'por-sessao-jogador': [number, number]
+    }
+  }
+
+  fila_operacional: {
+    key: number
+    value: FilaOperacionalDB
+    indexes: {
+      'por-sessao': number
+      'por-sessao-jogador': [number, number]
+      'por-sessao-status': [number, StatusFilaOperacional]
+      'por-sessao-prioridade': [number, PrioridadeFilaOperacional]
+    }
+  }
+
+
+  tampinhas_substituicao: {
+    key: number
+    value: TampinhaSubstituicaoDB
+    indexes: {
+      'por-sessao': number
+      'por-sessao-grupo': [number, number]
+    }
+  }
+
+  tampinhas_empate: {
+    key: number
+    value: TampinhaEmpateDB
+    indexes: {
+      'por-partida': number
+      'por-sessao': number
+    }
+  }
+
+  partida_eventos: {
+    key: number
+    value: PartidaEventoDB
+    indexes: {
+      'por-partida': number
+      'por-partida-tipo': [number, TipoEventoPartida]
     }
   }
 
@@ -247,7 +408,7 @@ let banco: Promise<IDBPDatabase<GerenciadorPeladaDB>> | null = null
 
 export function obterBanco() {
   if (!banco) {
-    banco = openDB<GerenciadorPeladaDB>('gerenciador-pelada', 8, {
+    banco = openDB<GerenciadorPeladaDB>('gerenciador-pelada', 13, {
       upgrade(db, oldVersion) {
         /*
          * Instalação nova:
@@ -452,6 +613,94 @@ export function obterBanco() {
         /* Versão 8: novos campos do relógio não exigem recriar a store. */
         if (oldVersion < 8) {
           // Migração sem alteração estrutural.
+        }
+
+        /*
+         * Versão 9: histórico oficial dos eventos da partida.
+         */
+        if (oldVersion < 9) {
+          const eventos = db.createObjectStore('partida_eventos', {
+            keyPath: 'id',
+            autoIncrement: true,
+          })
+          eventos.createIndex('por-partida', 'partidaId')
+          eventos.createIndex('por-partida-tipo', ['partidaId', 'tipo'])
+        }
+
+        /*
+         * Versão 10:
+         * persiste o sorteio de tampinha usado para resolver operacionalmente
+         * uma partida empatada. O empate continua sendo o resultado esportivo.
+         */
+        if (oldVersion < 10) {
+          const tampinhas = db.createObjectStore('tampinhas_empate', {
+            keyPath: 'id',
+            autoIncrement: true,
+          })
+          tampinhas.createIndex('por-partida', 'partidaId', { unique: true })
+          tampinhas.createIndex('por-sessao', 'sessaoId')
+        }
+
+        /*
+         * Versão 11:
+         * fila operacional persistente. Cada atleta passa a ter posição e
+         * prioridade próprias, sem apagar o histórico do sorteio inicial.
+         */
+        if (oldVersion < 11) {
+          const fila = db.createObjectStore('fila_operacional', {
+            keyPath: 'id',
+            autoIncrement: true,
+          })
+          fila.createIndex('por-sessao', 'sessaoId')
+          fila.createIndex('por-sessao-jogador', ['sessaoId', 'jogadorId'], {
+            unique: true,
+          })
+          fila.createIndex('por-sessao-status', ['sessaoId', 'status'])
+          fila.createIndex('por-sessao-prioridade', ['sessaoId', 'prioridade'])
+        }
+
+        /*
+         * Versão 12: persiste as tampinhas usadas na cascata de substituição
+         * causada por chegadas atrasadas. Assim F5 nunca refaz um sorteio.
+         */
+        if (oldVersion < 12) {
+          const tampinhasSubstituicao = db.createObjectStore('tampinhas_substituicao', {
+            keyPath: 'id',
+            autoIncrement: true,
+          })
+          tampinhasSubstituicao.createIndex('por-sessao', 'sessaoId')
+          tampinhasSubstituicao.createIndex(
+            'por-sessao-grupo',
+            ['sessaoId', 'grupo'],
+          )
+        }
+
+        /*
+         * Versão 13: formações operacionais independentes do sorteio inicial.
+         * A migração é propositalmente não destrutiva: não altera fila,
+         * partidas ou tampinhas existentes. O repositório v13 fará a primeira
+         * reconstrução idempotente das formações usando o estado já persistido.
+         */
+        if (oldVersion < 13) {
+          const formacoes = db.createObjectStore('formacoes_operacionais', {
+            keyPath: 'id',
+            autoIncrement: true,
+          })
+          formacoes.createIndex('por-sessao', 'sessaoId')
+          formacoes.createIndex('por-sessao-status', ['sessaoId', 'status'])
+          formacoes.createIndex('por-sessao-ordem', ['sessaoId', 'ordem'], {
+            unique: true,
+          })
+
+          const membros = db.createObjectStore('formacao_operacional_membros', {
+            keyPath: 'id',
+            autoIncrement: true,
+          })
+          membros.createIndex('por-sessao', 'sessaoId')
+          membros.createIndex('por-formacao', 'formacaoId')
+          membros.createIndex('por-sessao-jogador', ['sessaoId', 'jogadorId'], {
+            unique: true,
+          })
         }
 
       },

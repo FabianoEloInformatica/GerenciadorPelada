@@ -6,13 +6,35 @@ import {
 } from '../db/sorteioLinhaRepository'
 import {
   buscarPartidaEmAndamentoCompleta,
+  buscarTampinhaEmpate,
+  buscarUltimaPartidaCompletaDaSessao,
+  finalizarPartida,
   iniciarPrimeiraPartida,
+  iniciarProximaPartida,
+  iniciarProximaPartidaAposEmpateComPermanencia,
+  iniciarPartidaComDoisTimesAposEmpate,
+  listarFilaOperacional,
+  listarFormacoesFilaOperacional,
+  organizarChegadaAtrasadaNaFila,
+  normalizarFilaOperacionalV13,
+  diagnosticarFilaOperacionalV13,
+  reconstruirFormacoesOperacionaisV13,
+  type DiagnosticoFilaV13,
+  listarUltimosNumerosTampinhaV13,
+  type FormacaoOperacionalCompletaV13,
+  type UltimoNumeroTampinhaJogadorV13,
+  ordenarRetornosDoEmpateNaFila,
+  registrarTampinhaEmpate,
+  inicializarFilaOperacional,
+  garantirFilaOperacionalCompletaDaSessao,
+  sincronizarFilaComPartida,
   normalizarRelogioPartida,
   pausarPartida,
+  registrarGolPartida,
   retomarPartida,
   type PartidaEmAndamentoCompleta,
 } from '../db/partidasRepository'
-import type { ConfiguracaoPeladaDB } from '../db/database'
+import type { ConfiguracaoPeladaDB, TampinhaEmpateDB, FilaOperacionalDB } from '../db/database'
 
 import {
   analisarListaPelada,
@@ -153,6 +175,62 @@ export default function NovaPelada() {
     useState<PartidaEmAndamentoCompleta | null>(null)
   const [agoraRelogio, setAgoraRelogio] = useState(Date.now())
   const [alterandoPausa, setAlterandoPausa] = useState(false)
+  const [finalizandoPartida, setFinalizandoPartida] = useState(false)
+  const [filaOperacionalAtual, setFilaOperacionalAtual] = useState<FilaOperacionalDB[]>([])
+  // V13: projeção das formações atuais; a tela não depende mais de grupoOrigem.
+  const [formacoesOperacionaisV13, setFormacoesOperacionaisV13] = useState<FormacaoOperacionalCompletaV13[]>([])
+  const [diagnosticoFilaV13, setDiagnosticoFilaV13] = useState<DiagnosticoFilaV13 | null>(null)
+  const [ultimosNumerosTampinhaV13, setUltimosNumerosTampinhaV13] = useState<UltimoNumeroTampinhaJogadorV13[]>([])
+  const [iniciandoProximaPartida, setIniciandoProximaPartida] = useState(false)
+  const [resultadoTampinhaEmpate, setResultadoTampinhaEmpate] = useState<TampinhaEmpateDB | null>(null)
+  const [sorteandoTampinhaEmpate, setSorteandoTampinhaEmpate] = useState(false)
+  const [confirmacaoEmpateAberta, setConfirmacaoEmpateAberta] = useState(false)
+  // Resultado visual das tampinhas geradas pela entrada de um atrasado.
+  const [resultadoCascataAtrasado, setResultadoCascataAtrasado] = useState<{
+    jogadorChegando: string
+    etapas: Array<{
+      grupo: number
+      numeros: Array<{ nome: string; numero: number }>
+      jogadorSaindo: string
+      jogadorEntrando: string
+    }>
+  } | null>(null)
+  const [confirmacaoFinalizacao, setConfirmacaoFinalizacao] = useState<{
+    nomeTime1: string
+    nomeTime2: string
+    placarTime1: number
+    placarTime2: number
+  } | null>(null)
+  const [resultadoPartidaAberto, setResultadoPartidaAberto] = useState<{
+    tipo: 'VITORIA' | 'EMPATE'
+    placar: string
+    vencedor?: string
+    perdedor?: string
+  } | null>(null)
+  const [confirmacaoProximaPartida, setConfirmacaoProximaPartida] = useState<{
+    numeroPartida: number
+    grupo: number
+    vencedor: string
+    corEntrada: string
+    jogadores: string[]
+    goleiro: string
+    descricaoGoleiro: string
+    partidaId: number
+    sessaoId: number
+    goleiroId: number
+    jogadoresLinhaIds: number[]
+  } | null>(null)
+  const [dadosConfirmacaoEmpate, setDadosConfirmacaoEmpate] = useState<{
+    titulo: string
+    subtitulo: string
+    times: Array<{ titulo: string; jogadores: string[]; goleiro: string; detalheGoleiro?: string }>
+    rodape: string
+  } | null>(null)
+  const [acaoConfirmacaoEmpate, setAcaoConfirmacaoEmpate] = useState<(() => Promise<void>) | null>(null)
+  const [golAbertoLado, setGolAbertoLado] = useState<1 | 2 | null>(null)
+  const [autorGolId, setAutorGolId] = useState<number | null>(null)
+  const [salvandoGol, setSalvandoGol] = useState(false)
+  const [erroGol, setErroGol] = useState('')
   const [organizacaoAberta, setOrganizacaoAberta] = useState(false)
   const [chegadaAtrasadaAberta, setChegadaAtrasadaAberta] = useState(false)
   const [jogadoresChegada, setJogadoresChegada] = useState<JogadorDB[]>([])
@@ -307,9 +385,14 @@ export default function NovaPelada() {
         const sessaoAndamento = sessoesEmAndamento[0]
 
         if (sessaoAndamento?.id) {
-          const partida = await buscarPartidaEmAndamentoCompleta(
+          const partidaEmCurso = await buscarPartidaEmAndamentoCompleta(
             sessaoAndamento.id,
           )
+
+          // Mantém a última partida finalizada visível após F5 até existir a próxima.
+          const partida =
+            partidaEmCurso ??
+            (await buscarUltimaPartidaCompletaDaSessao(sessaoAndamento.id))
 
           if (partida) {
             /*
@@ -331,6 +414,8 @@ export default function NovaPelada() {
                   nomeLista: participante.nomeImportado,
                   funcaoHoje: participante.tipoSessao,
                   presente: participante.presente,
+                  chegouAtrasado: participante.chegouAtrasado,
+                  ordemChegada: participante.ordemChegada,
                 } satisfies ParticipantePresenca
               }),
             )
@@ -368,7 +453,36 @@ export default function NovaPelada() {
                 )
                 .sort((a, b) => a.ordem - b.ordem),
             )
+            await garantirFilaOperacionalAtual(partida)
             setPartidaEmAndamento(partida)
+
+            if (
+              partida.partida.id &&
+              partida.partida.status === 'FINALIZADA' &&
+              partida.partida.resultado === 'EMPATE'
+            ) {
+              const tampinhaSalva = await buscarTampinhaEmpate(partida.partida.id)
+              setResultadoTampinhaEmpate(tampinhaSalva)
+
+              /*
+               * V13: F5 apenas reconstrói a projeção operacional a partir do
+               * histórico persistido. Nenhuma tampinha nova é sorteada aqui.
+               */
+              if (tampinhaSalva) {
+                const cfgAtual = await obterConfiguracaoPelada()
+                const reconstrucao = await reconstruirFormacoesOperacionaisV13(
+                  sessaoAndamento.id,
+                  cfgAtual.jogadoresLinhaPorTime ?? 4,
+                )
+                setFormacoesOperacionaisV13(reconstrucao.formacoes)
+                setUltimosNumerosTampinhaV13(
+                  await listarUltimosNumerosTampinhaV13(sessaoAndamento.id),
+                )
+              }
+            } else {
+              setResultadoTampinhaEmpate(null)
+            }
+
             return
           }
         }
@@ -991,6 +1105,74 @@ export default function NovaPelada() {
     }
   }
 
+  async function atualizarOrganizacaoOperacionalV13() {
+    const sessaoId = sessaoEmAndamentoId ?? sessaoCriadaId
+    if (sessaoId === null) return
+
+    try {
+      const cfg = configuracaoPelada ?? (await obterConfiguracaoPelada())
+      const quantidadeLinha = cfg.jogadoresLinhaPorTime ?? 4
+      const totalParticipantes = participantesPresenca.filter(
+        (participante) => participante.presente,
+      ).length
+
+      /*
+       * A partida em andamento define apenas quem está na quadra.
+       * Todos os demais são reconstruídos imediatamente como fila futura.
+       */
+      await reconstruirFormacoesOperacionaisV13(sessaoId, quantidadeLinha)
+
+      /*
+       * Tudo que NÃO depende do resultado da partida atual é resolvido agora.
+       * Ex.: Ciro sozinho antes de dois times completos dispara a cascata de
+       * tampinhas e a última sobra vai para o final da fila.
+       *
+       * Goleiros que estão na partida atual continuam fora dessas formações e
+       * só serão destinados quando o resultado da partida exigir essa decisão.
+       */
+      const normalizada = await normalizarFilaOperacionalV13(
+        sessaoId,
+        quantidadeLinha,
+        totalParticipantes,
+        cfg.menorNumeroSai ?? true,
+      )
+
+      setFormacoesOperacionaisV13(normalizada.formacoes)
+      setFilaOperacionalAtual(await listarFilaOperacional(sessaoId))
+      setUltimosNumerosTampinhaV13(
+        await listarUltimosNumerosTampinhaV13(sessaoId),
+      )
+      setDiagnosticoFilaV13(await diagnosticarFilaOperacionalV13(sessaoId))
+
+      if (normalizada.cascata.length > 0) {
+        const nome = (id: number) =>
+          participantesPresenca.find((p) => p.jogador.id === id)?.jogador
+            .nomeExibicao ?? `Jogador #${id}`
+
+        setResultadoCascataAtrasado({
+          jogadorChegando: 'Fila operacional',
+          etapas: normalizada.cascata.map((etapa) => ({
+            grupo: etapa.grupo,
+            numeros: etapa.numeros.map((item) => ({
+              nome: nome(item.jogadorId),
+              numero: item.numero,
+            })),
+            jogadorSaindo: nome(etapa.jogadorSaindoId),
+            jogadorEntrando: nome(etapa.jogadorEntrandoId),
+          })),
+        })
+      }
+    } catch (erro) {
+      console.error('Erro ao atualizar Organização/Fila:', erro)
+      alert(
+        erro instanceof Error
+          ? erro.message
+          : 'Não foi possível atualizar a Organização/Fila.',
+      )
+    }
+  }
+
+
   async function sortearJogadoresLinhaIniciais() {
     if (sessaoCriadaId === null) {
       alert('Crie a sessão antes de realizar o sorteio dos jogadores de linha.')
@@ -1166,6 +1348,24 @@ export default function NovaPelada() {
         },
       ])
 
+      /*
+       * A gravação no IndexedDB não altera sozinha o estado do React.
+       * Recarregamos imediatamente a partida oficial recém-criada para que
+       * a tela operacional apareça sem precisar sair e entrar em Nova Pelada.
+       */
+      const partidaIniciada =
+        await buscarPartidaEmAndamentoCompleta(sessaoCriadaId)
+
+      if (!partidaIniciada) {
+        throw new Error(
+          'A partida foi criada, mas não foi possível carregá-la para a tela.',
+        )
+      }
+
+      setSessaoEmAndamentoId(sessaoCriadaId)
+      setPartidaEmAndamento(partidaIniciada)
+      setAgoraRelogio(Date.now())
+
       alert(
         `Partida #${partidaId} iniciada e salva com sucesso. A pelada agora está EM ANDAMENTO.`,
       )
@@ -1196,13 +1396,555 @@ export default function NovaPelada() {
     } finally { setAlterandoPausa(false) }
   }
 
-  function eventoGolEmBreve(lado: 1 | 2) {
-    const cor = partidaEmAndamento?.times.find((t) => t.lado === lado)?.corColete ?? `Time ${lado}`
-    alert(`GOL ${cor}: na próxima etapa vamos abrir a escolha do autor do gol.`)
+  function abrirRegistroGol(lado: 1 | 2) {
+    if (!partidaEmAndamento?.partida.id) return
+    if (partidaEmAndamento.partida.pausada) {
+      alert('Retome a partida antes de registrar um gol.')
+      return
+    }
+    setGolAbertoLado(lado)
+    setAutorGolId(null)
+    setErroGol('')
   }
 
-  function finalizarPartidaEmBreve() {
-    alert('A finalização será ligada junto das regras de vitória, empate e rotação.')
+  function fecharRegistroGol() {
+    if (salvandoGol) return
+    setGolAbertoLado(null)
+    setAutorGolId(null)
+    setErroGol('')
+  }
+
+  async function confirmarRegistroGol(golContra = false) {
+    const partidaId = partidaEmAndamento?.partida.id
+    const lado = golAbertoLado
+    if (!partidaId || lado === null) return
+    if (!golContra && autorGolId === null) {
+      setErroGol('Selecione o autor do gol.')
+      return
+    }
+
+    try {
+      setSalvandoGol(true)
+      setErroGol('')
+      const resultado = await registrarGolPartida(partidaId, {
+        ladoBeneficiado: lado,
+        jogadorId: golContra ? undefined : autorGolId ?? undefined,
+        golContra,
+      })
+
+      // A tela só muda depois que evento + placar foram confirmados no banco.
+      setPartidaEmAndamento((estado) =>
+        estado ? { ...estado, partida: resultado.partida } : estado,
+      )
+      setAgoraRelogio(Date.now())
+      setGolAbertoLado(null)
+      setAutorGolId(null)
+
+      const limiteGols = configuracaoPelada?.limiteGols ?? 2
+      const placarDoLado =
+        lado === 1 ? resultado.partida.placarTime1 : resultado.partida.placarTime2
+      if (limiteGols > 0 && placarDoLado >= limiteGols) {
+        alert(
+          `Limite de ${limiteGols} gol(s) atingido. O resultado já está salvo; a finalização oficial será ligada à rotação na próxima etapa.`,
+        )
+      }
+    } catch (erro) {
+      console.error('Erro ao registrar gol:', erro)
+      setErroGol(
+        erro instanceof Error ? erro.message : 'Não foi possível registrar o gol.',
+      )
+    } finally {
+      setSalvandoGol(false)
+    }
+  }
+
+  function finalizarPartidaAtual() {
+    const atual = partidaEmAndamento
+    if (!atual) return
+
+    const partidaAtual = atual.partida
+    if (!partidaAtual.id || partidaAtual.status !== 'EM_ANDAMENTO') return
+
+    const time1 = atual.times.find((time) => time.lado === 1)
+    const time2 = atual.times.find((time) => time.lado === 2)
+
+    setConfirmacaoFinalizacao({
+      nomeTime1: time1?.corColete ?? 'Time 1',
+      nomeTime2: time2?.corColete ?? 'Time 2',
+      placarTime1: partidaAtual.placarTime1,
+      placarTime2: partidaAtual.placarTime2,
+    })
+  }
+
+  async function confirmarFinalizacaoPartida() {
+    const partidaAtual = partidaEmAndamento?.partida
+    const partidaId = partidaAtual?.id
+    const confirmacao = confirmacaoFinalizacao
+
+    if (
+      !partidaId ||
+      !partidaAtual ||
+      partidaAtual.status !== 'EM_ANDAMENTO' ||
+      !confirmacao
+    ) return
+
+    const { nomeTime1, nomeTime2 } = confirmacao
+
+    try {
+      setFinalizandoPartida(true)
+      const resultado = await finalizarPartida(partidaId, 'MANUAL')
+      setConfirmacaoFinalizacao(null)
+
+      setPartidaEmAndamento((estado) =>
+        estado ? { ...estado, partida: resultado.partida } : estado,
+      )
+      setAgoraRelogio(Date.now())
+
+      const placarFinal = `${nomeTime1} ${resultado.partida.placarTime1} × ${resultado.partida.placarTime2} ${nomeTime2}`
+
+      if (resultado.partida.resultado === 'EMPATE') {
+        setResultadoPartidaAberto({ tipo: 'EMPATE', placar: placarFinal })
+        return
+      }
+
+      const vencedor =
+        resultado.partida.ladoVencedor === 1 ? nomeTime1 : nomeTime2
+      const perdedor =
+        resultado.partida.ladoPerdedor === 1 ? nomeTime1 : nomeTime2
+
+      setResultadoPartidaAberto({
+        tipo: 'VITORIA',
+        placar: placarFinal,
+        vencedor,
+        perdedor,
+      })
+    } catch (erro) {
+      console.error('Erro ao finalizar partida:', erro)
+      alert(
+        erro instanceof Error
+          ? erro.message
+          : 'Não foi possível finalizar a partida.',
+      )
+    } finally {
+      setFinalizandoPartida(false)
+    }
+  }
+
+  async function garantirFilaOperacionalAtual(
+    partidaAtual: NonNullable<typeof partidaEmAndamento>,
+  ) {
+    const sessaoId = partidaAtual.partida.sessaoId
+    const idsQuadra = new Set(
+      partidaAtual.jogadores.map((jogador) => jogador.jogadorId),
+    )
+
+    /*
+     * Para sessões anteriores à versão 11 reconstruímos a fila a partir do
+     * sorteio inicial, sem alterar o sorteio histórico.
+     */
+    const itensIniciais = [
+      ...resultadoSorteioLinha
+        .filter((item) => item.jogador.id !== undefined)
+        .map((item) => ({
+          jogadorId: item.jogador.id!,
+          funcao: 'LINHA' as const,
+          prioridade: 'NAO_JOGOU' as const,
+          grupoOrigem: item.grupo,
+          emQuadra: idsQuadra.has(item.jogador.id!),
+        })),
+      ...resultadoSorteioGoleiros
+        .filter((item) => item.jogador.id !== undefined)
+        .map((item) => ({
+          jogadorId: item.jogador.id!,
+          funcao: 'GOLEIRO' as const,
+          prioridade: 'NAO_JOGOU' as const,
+          grupoOrigem: item.ordem,
+          emQuadra: idsQuadra.has(item.jogador.id!),
+        })),
+    ]
+
+    await inicializarFilaOperacional(sessaoId, itensIniciais)
+
+    /*
+     * A fila não pode depender de resultadoSorteioLinha/resultadoSorteioGoleiros
+     * já terem sido carregados no React. A sessão persistida é a fonte de verdade.
+     */
+    await garantirFilaOperacionalCompletaDaSessao(sessaoId)
+
+    const timePorLado = new Map(
+      partidaAtual.times.map((time) => [time.lado, time]),
+    )
+
+    await sincronizarFilaComPartida(
+      sessaoId,
+      partidaAtual.jogadores.map((jogador) => ({
+        jogadorId: jogador.jogadorId,
+        funcao: jogador.funcao,
+        grupoOrigem: timePorLado.get(jogador.lado)?.grupoOrigem,
+      })),
+    )
+
+    setFilaOperacionalAtual(await listarFilaOperacional(sessaoId))
+  }
+
+  async function realizarTampinhaDoEmpate() {
+    const partida = partidaEmAndamento?.partida
+    if (!partida?.id || partida.resultado !== 'EMPATE') return
+
+    const totalParticipantes = participantesPresenca.filter(
+      (participante) => participante.presente,
+    ).length
+
+    try {
+      setSorteandoTampinhaEmpate(true)
+
+      const resultado = await registrarTampinhaEmpate(
+        partida.id,
+        totalParticipantes,
+        configuracaoPelada?.maiorNumeroVence ?? true,
+      )
+
+      setResultadoTampinhaEmpate(resultado)
+    } catch (erro) {
+      console.error('Erro na tampinha do empate:', erro)
+      alert(
+        erro instanceof Error
+          ? erro.message
+          : 'Não foi possível realizar a tampinha do empate.',
+      )
+    } finally {
+      setSorteandoTampinhaEmpate(false)
+    }
+  }
+
+  async function confirmarRotacaoAposEmpate() {
+    const atual = partidaEmAndamento
+    const partida = atual?.partida
+    const tampinha = resultadoTampinhaEmpate
+
+    if (!atual || !partida?.id || !tampinha || partida.resultado !== 'EMPATE') {
+      return
+    }
+
+    const partidaFinalizadaId: number = partida.id
+    const quantidadeLinha = configuracaoPelada?.jogadoresLinhaPorTime ?? 4
+
+    try {
+      setIniciandoProximaPartida(true)
+
+      /*
+       * V13: neste ponto a rotação já foi consolidada.
+       * O botão CONTINUAR NÃO pode sortear, reconciliar ou deslocar ninguém.
+       * Ele apenas lê a fotografia operacional persistida e monta a partida.
+       */
+      const reconstrucao = await reconstruirFormacoesOperacionaisV13(
+        partida.sessaoId,
+        quantidadeLinha,
+      )
+      setFormacoesOperacionaisV13(reconstrucao.formacoes)
+
+      const formacoesProntas = reconstrucao.formacoes
+        .filter(({ formacao, membros }) => {
+          if (formacao.status !== 'AGUARDANDO') return false
+          const linhas = membros.filter((m) => m.funcao === 'LINHA')
+          const goleiros = membros.filter((m) => m.funcao === 'GOLEIRO')
+          return linhas.length >= quantidadeLinha && goleiros.length >= 1
+        })
+        .sort((a, b) => a.formacao.ordem - b.formacao.ordem)
+
+      if (formacoesProntas.length < 2) {
+        alert(
+          'A organização ainda não possui dois times completos e consolidados para a próxima partida.',
+        )
+        return
+      }
+
+      const nomeJogador = (id: number) =>
+        participantesPresenca.find((p) => p.jogador.id === id)?.jogador
+          .nomeExibicao ?? `Jogador #${id}`
+
+      const montarTime = (item: FormacaoOperacionalCompletaV13) => {
+        const linhas = item.membros
+          .filter((m) => m.funcao === 'LINHA')
+          .sort((a, b) => a.ordem - b.ordem)
+          .slice(0, quantidadeLinha)
+        const goleiro = item.membros
+          .filter((m) => m.funcao === 'GOLEIRO')
+          .sort((a, b) => a.ordem - b.ordem)[0]
+
+        if (!goleiro) throw new Error('Formação consolidada sem goleiro.')
+
+        return {
+          grupo: item.formacao.grupoHistorico ?? item.formacao.ordem,
+          jogadoresLinhaIds: linhas.map((m) => m.jogadorId),
+          goleiroId: goleiro.jogadorId,
+          nomesLinha: linhas.map((m) => nomeJogador(m.jogadorId)),
+          nomeGoleiro: nomeJogador(goleiro.jogadorId),
+        }
+      }
+
+      const primeiro = montarTime(formacoesProntas[0])
+      const segundo = montarTime(formacoesProntas[1])
+
+      setDadosConfirmacaoEmpate({
+        titulo: 'DOIS NOVOS TIMES VÃO ENTRAR',
+        subtitulo:
+          'A rotação já está consolidada. Confira os dois times antes de iniciar.',
+        times: [
+          {
+            titulo: `TIME / GRUPO ${primeiro.grupo}`,
+            jogadores: primeiro.nomesLinha,
+            goleiro: primeiro.nomeGoleiro,
+            detalheGoleiro: 'Goleiro definido pela rotação consolidada',
+          },
+          {
+            titulo: `TIME / GRUPO ${segundo.grupo}`,
+            jogadores: segundo.nomesLinha,
+            goleiro: segundo.nomeGoleiro,
+            detalheGoleiro: 'Goleiro definido pela rotação consolidada',
+          },
+        ],
+        rodape: `Partida ${partida.numero + 1} pronta para iniciar`,
+      })
+
+      setAcaoConfirmacaoEmpate(() => async () => {
+        await iniciarPartidaComDoisTimesAposEmpate(
+          partidaFinalizadaId,
+          {
+            grupoOrigem: primeiro.grupo,
+            goleiroId: primeiro.goleiroId,
+            jogadoresLinhaIds: primeiro.jogadoresLinhaIds,
+          },
+          {
+            grupoOrigem: segundo.grupo,
+            goleiroId: segundo.goleiroId,
+            jogadoresLinhaIds: segundo.jogadoresLinhaIds,
+          },
+        )
+      })
+      setConfirmacaoEmpateAberta(true)
+    } catch (erro) {
+      console.error('Erro ao preparar próxima partida após empate:', erro)
+      alert(
+        erro instanceof Error
+          ? erro.message
+          : 'Não foi possível preparar a próxima partida após o empate.',
+      )
+    } finally {
+      setIniciandoProximaPartida(false)
+    }
+  }
+
+
+  async function confirmarModalEmpate() {
+    if (!acaoConfirmacaoEmpate || !partidaEmAndamento) return
+    try {
+      setIniciandoProximaPartida(true)
+
+      /*
+       * Guardamos os grupos do empate antes de criar a nova partida.
+       * Se os dois times saírem, a tampinha definirá a ordem entre os dois
+       * retornos sem ultrapassar quem já estava esperando.
+       */
+      const sessaoId = partidaEmAndamento.partida.sessaoId
+      const tampinha = resultadoTampinhaEmpate
+      const grupoVencedorTampinha = tampinha
+        ? partidaEmAndamento.times.find(
+            (time) => time.lado === tampinha.ladoVencedor,
+          )?.grupoOrigem
+        : undefined
+      const grupoPerdedorTampinha = tampinha
+        ? partidaEmAndamento.times.find(
+            (time) => time.lado === tampinha.ladoPerdedor,
+          )?.grupoOrigem
+        : undefined
+
+      await acaoConfirmacaoEmpate()
+      const novaPartida = await buscarPartidaEmAndamentoCompleta(sessaoId)
+      if (!novaPartida) throw new Error('A próxima partida foi criada, mas não pôde ser carregada.')
+
+      await garantirFilaOperacionalAtual(novaPartida)
+
+      // Só reordena quando os DOIS times do empate realmente saíram da quadra.
+      const gruposNovaPartida = new Set(
+        novaPartida.times
+          .map((time) => time.grupoOrigem)
+          .filter((grupo): grupo is number => grupo !== undefined),
+      )
+      const ambosSairam =
+        grupoVencedorTampinha !== undefined &&
+        grupoPerdedorTampinha !== undefined &&
+        !gruposNovaPartida.has(grupoVencedorTampinha) &&
+        !gruposNovaPartida.has(grupoPerdedorTampinha)
+
+      if (ambosSairam) {
+        await ordenarRetornosDoEmpateNaFila(
+          sessaoId,
+          grupoVencedorTampinha,
+          grupoPerdedorTampinha,
+        )
+        setFilaOperacionalAtual(await listarFilaOperacional(sessaoId))
+      }
+
+      setPartidaEmAndamento(novaPartida)
+      setResultadoTampinhaEmpate(null)
+      setAgoraRelogio(Date.now())
+      setOrganizacaoAberta(false)
+      setConfirmacaoEmpateAberta(false)
+      setDadosConfirmacaoEmpate(null)
+      setAcaoConfirmacaoEmpate(null)
+    } catch (erro) {
+      console.error('Erro ao confirmar rotação do empate:', erro)
+      alert(erro instanceof Error ? erro.message : 'Não foi possível iniciar a próxima partida.')
+    } finally {
+      setIniciandoProximaPartida(false)
+    }
+  }
+
+  async function confirmarProximaPartida() {
+    const atual = partidaEmAndamento
+    const partida = atual?.partida
+
+    if (
+      !atual ||
+      !partida?.id ||
+      partida.status !== 'FINALIZADA' ||
+      !partida.ladoVencedor ||
+      !partida.ladoPerdedor
+    ) {
+      return
+    }
+
+    if (partida.resultado === 'EMPATE') {
+      alert('O empate precisa ser decidido pela tampinha antes da próxima partida.')
+      return
+    }
+
+    const quantidadeLinha = configuracaoPelada?.jogadoresLinhaPorTime ?? 4
+
+    /*
+     * A partir daqui a fila operacional é a autoridade.
+     * Ela preserva quem ainda não jogou e, depois, a ordem real dos retornos.
+     */
+    /*
+     * Para escolher quem realmente entra, reconstruímos a fila pelo histórico
+     * oficial. Isso também corrige sessões que começaram antes da fila v11.
+     */
+    /*
+     * A formação atual vem da fila individual. Ela já incorpora atrasados,
+     * substituições por tampinha e cascatas; o sorteio inicial fica histórico.
+     */
+    const formacoes = await listarFormacoesFilaOperacional(partida.sessaoId)
+    const proximaFormacao = formacoes.find(
+      (formacao) => formacao.jogadoresLinhaIds.length >= quantidadeLinha,
+    )
+
+    if (!proximaFormacao) {
+      alert('Não existe um time completo aguardando na fila.')
+      return
+    }
+
+    const numeroGrupo = proximaFormacao.grupo
+    const jogadoresFila = proximaFormacao.jogadoresLinhaIds
+      .slice(0, quantidadeLinha)
+      .map((id) => participantesPresenca.find((p) => p.jogador.id === id)?.jogador)
+      .filter((jogador): jogador is JogadorDB => Boolean(jogador))
+    const goleiroProprioId = proximaFormacao.goleiroId
+
+    const timePerdedor = atual.times.find(
+      (time) => time.lado === partida.ladoPerdedor,
+    )
+
+    if (!timePerdedor) {
+      alert('Não foi possível identificar o time perdedor.')
+      return
+    }
+
+    /*
+     * Regra da pelada:
+     * - se o próximo grupo já tem goleiro, usa esse goleiro;
+     * - se não tem, o goleiro do time perdedor continua e completa o time que entra.
+     */
+    const goleiroId = goleiroProprioId ?? timePerdedor.goleiroId
+    const origemGoleiro = goleiroProprioId
+      ? `Goleiro #${numeroGrupo} da fila`
+      : 'Goleiro do time perdedor permanece'
+
+    const vencedor = atual.times.find(
+      (time) => time.lado === partida.ladoVencedor,
+    )
+    const corVencedor = vencedor?.corColete ?? `Time ${partida.ladoVencedor}`
+    const corEntrada = timePerdedor.corColete ?? `Time ${partida.ladoPerdedor}`
+
+    /*
+     * Antes de criar a próxima partida, mostramos a escalação completa.
+     * Assim o operador confirma visualmente quem entra e qual goleiro será usado.
+     */
+    const nomeGoleiro = goleiroProprioId
+      ? participantesPresenca.find((p) => p.jogador.id === goleiroProprioId)?.jogador.nomeExibicao ?? `Goleiro #${goleiroProprioId}`
+      : participantesPresenca.find(
+          (participante) => participante.jogador.id === timePerdedor.goleiroId,
+        )?.jogador.nomeExibicao ?? `Jogador #${timePerdedor.goleiroId}`
+
+    const jogadoresSelecionados = jogadoresFila.slice(0, quantidadeLinha)
+    const descricaoGoleiro = goleiroProprioId
+      ? 'GOLEIRO DA FILA'
+      : 'GOLEIRO DO TIME QUE ACABOU DE PERDER'
+
+    setConfirmacaoProximaPartida({
+      numeroPartida: partida.numero + 1,
+      grupo: numeroGrupo,
+      vencedor: corVencedor,
+      corEntrada,
+      jogadores: jogadoresSelecionados.map((jogador) => jogador.nomeExibicao),
+      goleiro: nomeGoleiro,
+      descricaoGoleiro,
+      partidaId: partida.id,
+      sessaoId: partida.sessaoId,
+      goleiroId,
+      jogadoresLinhaIds: jogadoresSelecionados
+        .map((jogador) => jogador.id)
+        .filter((id): id is number => id !== undefined),
+    })
+    return
+  }
+
+  async function iniciarProximaPartidaConfirmada() {
+    const dados = confirmacaoProximaPartida
+    if (!dados) return
+
+    try {
+      setIniciandoProximaPartida(true)
+
+      await iniciarProximaPartida(dados.partidaId, {
+        grupoOrigem: dados.grupo,
+        goleiroId: dados.goleiroId,
+        jogadoresLinhaIds: dados.jogadoresLinhaIds,
+      })
+
+      const novaPartida = await buscarPartidaEmAndamentoCompleta(dados.sessaoId)
+      if (!novaPartida) {
+        throw new Error(
+          'A próxima partida foi criada, mas não foi possível carregá-la na tela.',
+        )
+      }
+
+      await garantirFilaOperacionalAtual(novaPartida)
+      setPartidaEmAndamento(novaPartida)
+      setResultadoTampinhaEmpate(null)
+      setAgoraRelogio(Date.now())
+      setOrganizacaoAberta(false)
+      setConfirmacaoProximaPartida(null)
+    } catch (erro) {
+      console.error('Erro ao iniciar próxima partida:', erro)
+      alert(
+        erro instanceof Error
+          ? erro.message
+          : 'Não foi possível iniciar a próxima partida.',
+      )
+    } finally {
+      setIniciandoProximaPartida(false)
+    }
   }
 
   async function recarregarParticipantesSessaoAtiva(sessaoId: number) {
@@ -1272,7 +2014,39 @@ export default function NovaPelada() {
         tipoSessao: tipoChegada,
       })
 
+      const totalParticipantes = participantesPresenca.filter((p) => p.presente).length + 1
+      const organizacao = await organizarChegadaAtrasadaNaFila(
+        sessaoEmAndamentoId,
+        jogadorChegadaId,
+        tipoChegada,
+        configuracaoPelada?.jogadoresLinhaPorTime ?? 4,
+        totalParticipantes,
+        configuracaoPelada?.menorNumeroSai ?? true,
+      )
+
+      // Exibe a cascata dentro do padrão visual do app, sem alert nativo do navegador.
+      if (organizacao.cascata.length > 0) {
+        const nomes = (id: number) =>
+          participantesPresenca.find((p) => p.jogador.id === id)?.jogador.nomeExibicao ??
+          (id === jogadorChegadaId ? jogador.nomeExibicao : `Jogador #${id}`)
+
+        setResultadoCascataAtrasado({
+          jogadorChegando: jogador.nomeExibicao,
+          etapas: organizacao.cascata.map((t) => ({
+            grupo: t.grupo,
+            numeros: t.numeros.map((n) => ({
+              nome: nomes(n.jogadorId),
+              numero: n.numero,
+            })),
+            jogadorSaindo: nomes(t.jogadorSaindoId),
+            jogadorEntrando: nomes(t.jogadorEntrandoId),
+          })),
+        })
+      }
+
       await recarregarParticipantesSessaoAtiva(sessaoEmAndamentoId)
+      setFilaOperacionalAtual(await listarFilaOperacional(sessaoEmAndamentoId))
+      await atualizarOrganizacaoOperacionalV13()
       setChegadaAtrasadaAberta(false)
       setJogadorChegadaId(null)
     } catch (erro) {
@@ -1315,7 +2089,18 @@ export default function NovaPelada() {
         tipoSessao: tipoChegada,
       })
 
+      await organizarChegadaAtrasadaNaFila(
+        sessaoEmAndamentoId,
+        novoId,
+        tipoChegada,
+        configuracaoPelada?.jogadoresLinhaPorTime ?? 4,
+        participantesPresenca.filter((p) => p.presente).length + 1,
+        configuracaoPelada?.menorNumeroSai ?? true,
+      )
+
       await recarregarParticipantesSessaoAtiva(sessaoEmAndamentoId)
+      setFilaOperacionalAtual(await listarFilaOperacional(sessaoEmAndamentoId))
+      await atualizarOrganizacaoOperacionalV13()
       setChegadaNomeCompleto('')
       setChegadaNomeExibicao('')
       setChegadaApelidos('')
@@ -1472,14 +2257,22 @@ export default function NovaPelada() {
         const time2 = partidaEmAndamento.times.find((t) => t.lado === 2)
         const hex = (nome?: string) => configuracaoPelada?.coresColetes.find((c) => c.nome.toLocaleLowerCase('pt-BR') === nome?.toLocaleLowerCase('pt-BR'))?.hex ?? '#777777'
         const inicio = new Date(partida.iniciadaEm).getTime()
-        const referencia = partida.pausada && partida.pausadaEm ? new Date(partida.pausadaEm).getTime() : agoraRelogio
-        const ms = Math.max(0, referencia - inicio - partida.totalPausadoMs)
+        const referencia =
+          partida.status === 'FINALIZADA' && partida.finalizadaEm
+            ? new Date(partida.finalizadaEm).getTime()
+            : partida.pausada && partida.pausadaEm
+              ? new Date(partida.pausadaEm).getTime()
+              : agoraRelogio
+        const ms =
+          partida.status === 'FINALIZADA' && partida.tempoFinalMs !== undefined
+            ? partida.tempoFinalMs
+            : Math.max(0, referencia - inicio - partida.totalPausadoMs)
         const total = Math.floor(ms / 1000)
         const limite = (configuracaoPelada?.tempoQuedaMinutos ?? 7) * 60
         const tempo = `${String(Math.floor(total / 60)).padStart(2,'0')}:${String(total % 60).padStart(2,'0')}${total >= limite ? '+' : ''}`
         return (
           <section className="partida-operacional">
-            <div className="partida-operacional-topo"><span>PELADA EM ANDAMENTO</span><strong>PARTIDA {partida.numero}</strong></div>
+            <div className="partida-operacional-topo"><span>{partida.status === 'FINALIZADA' ? 'PARTIDA FINALIZADA' : 'PELADA EM ANDAMENTO'}</span><strong>PARTIDA {partida.numero}</strong></div>
             <div className="placar-operacional">
               <div className="placar-time placar-time-esquerda">
                 <CamisaColete cor={hex(time1?.corColete)} />
@@ -1501,49 +2294,219 @@ export default function NovaPelada() {
             <div className={`cronometro-operacional ${total >= limite ? 'limite' : ''} ${partida.pausada ? 'pausado' : ''}`}>
               <small>{partida.pausada ? 'PARTIDA PAUSADA' : total >= limite ? 'TEMPO LIMITE ATINGIDO' : 'TEMPO DE JOGO'}</small><strong>{tempo}</strong>
             </div>
-            <div className="acoes-gol">
-              <button type="button" onClick={() => eventoGolEmBreve(1)}><CamisaColete cor={hex(time1?.corColete)} /><span>GOL</span><small>{time1?.corColete ?? 'Time 1'}</small></button>
-              <button type="button" onClick={() => eventoGolEmBreve(2)}><CamisaColete cor={hex(time2?.corColete)} /><span>GOL</span><small>{time2?.corColete ?? 'Time 2'}</small></button>
-            </div>
-            <button type="button" className={`btn-pausa-partida ${partida.pausada ? 'retomar' : ''}`} onClick={alternarPausaPartida} disabled={alterandoPausa}>{alterandoPausa ? 'SALVANDO...' : partida.pausada ? '▶ RETOMAR PARTIDA' : 'Ⅱ PAUSAR PARTIDA'}</button>
-            <button type="button" className="btn-finalizar-partida" onClick={finalizarPartidaEmBreve}>FINALIZAR PARTIDA</button>
+            {partida.status === 'EM_ANDAMENTO' ? (
+              <>
+                <div className="acoes-gol">
+                  <button type="button" onClick={() => abrirRegistroGol(1)}><CamisaColete cor={hex(time1?.corColete)} /><span>GOL</span><small>{time1?.corColete ?? 'Time 1'}</small></button>
+                  <button type="button" onClick={() => abrirRegistroGol(2)}><CamisaColete cor={hex(time2?.corColete)} /><span>GOL</span><small>{time2?.corColete ?? 'Time 2'}</small></button>
+                </div>
+                <button type="button" className={`btn-pausa-partida ${partida.pausada ? 'retomar' : ''}`} onClick={alternarPausaPartida} disabled={alterandoPausa || finalizandoPartida}>{alterandoPausa ? 'SALVANDO...' : partida.pausada ? '▶ RETOMAR PARTIDA' : 'Ⅱ PAUSAR PARTIDA'}</button>
+                <button type="button" className="btn-finalizar-partida" onClick={finalizarPartidaAtual} disabled={finalizandoPartida}>{finalizandoPartida ? 'FINALIZANDO...' : 'FINALIZAR PARTIDA'}</button>
+              </>
+            ) : (
+              <div className="resumo-sorteio">
+                <strong>RESULTADO OFICIAL</strong>
+                <p>
+                  {partida.resultado === 'EMPATE'
+                    ? `EMPATE — ${partida.placarTime1} × ${partida.placarTime2}.`
+                    : `${partida.ladoVencedor === 1 ? (time1?.corColete ?? 'Time 1') : (time2?.corColete ?? 'Time 2')} venceu por ${partida.placarTime1} × ${partida.placarTime2}.`}
+                </p>
+
+                {partida.resultado === 'EMPATE' && (
+                  <div className="organizacao-aviso">
+                    {!resultadoTampinhaEmpate ? (
+                      <>
+                        <strong>TAMPINHA OBRIGATÓRIA</strong>
+                        <span>
+                          O empate continua como resultado oficial. A tampinha
+                          define somente a prioridade operacional da rotação.
+                        </span>
+                        <button
+                          type="button"
+                          className="btn-finalizar-partida"
+                          onClick={realizarTampinhaDoEmpate}
+                          disabled={sorteandoTampinhaEmpate}
+                        >
+                          {sorteandoTampinhaEmpate
+                            ? 'SORTEANDO...'
+                            : 'SORTEAR TAMPINHA DO EMPATE'}
+                        </button>
+                      </>
+                    ) : (
+                      <div className="tampinha-resultado-destaque">
+                        <div className="tampinha-titulo">
+                          <small>RESULTADO DA TAMPINHA</small>
+                          <strong>{resultadoTampinhaEmpate.ladoVencedor === 1 ? time1?.corColete ?? 'Time 1' : time2?.corColete ?? 'Time 2'} VENCEU</strong>
+                        </div>
+                        <div className="tampinha-numeros">
+                          <div className={resultadoTampinhaEmpate.ladoVencedor === 1 ? 'tampinha-time vencedor' : 'tampinha-time'}>
+                            <span>{time1?.corColete ?? 'Time 1'}</span><b>{resultadoTampinhaEmpate.numeroLado1}</b>
+                            {resultadoTampinhaEmpate.ladoVencedor === 1 && <small>VENCEDOR</small>}
+                          </div>
+                          <div className="tampinha-versus">×</div>
+                          <div className={resultadoTampinhaEmpate.ladoVencedor === 2 ? 'tampinha-time vencedor' : 'tampinha-time'}>
+                            <span>{time2?.corColete ?? 'Time 2'}</span><b>{resultadoTampinhaEmpate.numeroLado2}</b>
+                            {resultadoTampinhaEmpate.ladoVencedor === 2 && <small>VENCEDOR</small>}
+                          </div>
+                        </div>
+                        <div className="tampinha-explicacao"><strong>O que este resultado define?</strong><span>Prioridade dos goleiros e ordem operacional da fila. A partida continua registrada como empate.</span></div>
+                        <button type="button" className="btn-finalizar-partida" onClick={confirmarRotacaoAposEmpate} disabled={iniciandoProximaPartida}>
+                          {iniciandoProximaPartida ? 'PREPARANDO PRÓXIMA PARTIDA...' : 'CONTINUAR PARA OS PRÓXIMOS TIMES'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {partida.resultado !== 'EMPATE' && (() => {
+                  const quantidadeLinha =
+                    configuracaoPelada?.jogadoresLinhaPorTime ?? 4
+
+                  /*
+                   * A tela mostra o mesmo próximo grupo que a fila operacional
+                   * usará ao confirmar, evitando divergência entre UI e regra.
+                   */
+                  const linhasAguardando = filaOperacionalAtual.filter(
+                    (item) =>
+                      item.status === 'AGUARDANDO' &&
+                      item.funcao === 'LINHA' &&
+                      item.grupoOrigem !== undefined,
+                  )
+                  const gruposNaOrdem = Array.from(
+                    new Set(linhasAguardando.map((item) => item.grupoOrigem!)),
+                  )
+                  const numeroGrupo =
+                    gruposNaOrdem.find(
+                      (grupo) =>
+                        linhasAguardando.filter(
+                          (item) => item.grupoOrigem === grupo,
+                        ).length >= quantidadeLinha,
+                    ) ?? 0
+
+                  const jogadoresFila = numeroGrupo
+                    ? linhasAguardando
+                        .filter((item) => item.grupoOrigem === numeroGrupo)
+                        .map((item) => {
+                          const jogador = participantesPresenca.find(
+                            (p) => p.jogador.id === item.jogadorId,
+                          )?.jogador
+                          return jogador ? { jogador } : null
+                        })
+                        .filter((item): item is { jogador: JogadorDB } => item !== null)
+                    : []
+                  const itemGoleiroFila = filaOperacionalAtual.find(
+                    (item) =>
+                      item.status === 'AGUARDANDO' &&
+                      item.funcao === 'GOLEIRO' &&
+                      item.grupoOrigem === numeroGrupo,
+                  )
+                  const goleiroFila = itemGoleiroFila
+                    ? participantesPresenca.find(
+                        (p) => p.jogador.id === itemGoleiroFila.jogadorId,
+                      )
+                    : undefined
+                  const perdedor = partidaEmAndamento.times.find(
+                    (time) => time.lado === partida.ladoPerdedor,
+                  )
+                  const timePronto =
+                    jogadoresFila.length >= quantidadeLinha && Boolean(perdedor)
+
+                  return (
+                    <div className="proximo-time-destaque">
+                      <div className="proximo-time-cabecalho">
+                        <div>
+                          <small>PRÓXIMO TIME</small>
+                          <strong>{numeroGrupo ? `GRUPO ${numeroGrupo}` : 'AGUARDANDO FORMAÇÃO'}</strong>
+                        </div>
+                        <span className={timePronto ? 'pronto' : 'incompleto'}>
+                          {timePronto ? 'PRONTO' : 'INCOMPLETO'}
+                        </span>
+                      </div>
+
+                      <div className="proximo-time-jogadores">
+                        {jogadoresFila.slice(0, quantidadeLinha).map((item, indice) => (
+                          <div className="proximo-time-jogador" key={item.jogador.id}>
+                            <b>{indice + 1}</b>
+                            <span>{item.jogador.nomeExibicao}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="proximo-time-goleiro">
+                        <span>🧤</span>
+                        <div>
+                          <small>GOLEIRO</small>
+                          <strong>
+                            {goleiroFila
+                              ? goleiroFila.jogador.nomeExibicao
+                              : 'Goleiro do time perdedor'}
+                          </strong>
+                          <em>
+                            {goleiroFila
+                              ? 'Aguardando com este grupo'
+                              : 'Permanece para completar o time'}
+                          </em>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="btn-finalizar-partida"
+                        onClick={confirmarProximaPartida}
+                        disabled={iniciandoProximaPartida}
+                      >
+                        {iniciandoProximaPartida
+                          ? 'INICIANDO...'
+                          : 'VER ESCALAÇÃO E INICIAR'}
+                      </button>
+                    </div>
+                  )
+                })()}
+              </div>
+            )}
 
             {(() => {
               /*
-               * Grupos 1 e 2 estão na partida atual. A organização mostra somente
-               * os grupos seguintes, preservando a ordem oficial do sorteio inicial.
+               * V13: a Organização/Fila consome a projeção operacional.
+               * grupoOrigem fica apenas como compatibilidade/histórico.
                */
-              const numerosGrupos = Array.from(
-                new Set(resultadoSorteioLinha.map((item) => item.grupo)),
-              )
-                .filter((grupo) => grupo > 2)
-                .sort((a, b) => a - b)
-
               const quantidadeLinha =
                 configuracaoPelada?.jogadoresLinhaPorTime ?? 4
 
-              const gruposOrganizacao = numerosGrupos.map((numeroGrupo) => {
-                const jogadores = resultadoSorteioLinha
-                  .filter((item) => item.grupo === numeroGrupo)
-                  .sort((a, b) => a.posicaoNoGrupo - b.posicaoNoGrupo)
+              const gruposOrganizacao = formacoesOperacionaisV13
+                .filter(({ formacao }) => formacao.status === 'AGUARDANDO')
+                .map(({ formacao, membros }) => {
+                  const jogadores = membros
+                    .filter((membro) => membro.funcao === 'LINHA')
+                    .map((membro) => {
+                      const jogador = participantesPresenca.find(
+                        (p) => p.jogador.id === membro.jogadorId,
+                      )?.jogador
+                      return jogador ? { jogador } : null
+                    })
+                    .filter((item): item is { jogador: JogadorDB } => item !== null)
 
-                const goleiro = resultadoSorteioGoleiros.find(
-                  (item) => item.ordem === numeroGrupo,
-                )
+                  const membroGoleiro = membros.find(
+                    (membro) => membro.funcao === 'GOLEIRO',
+                  )
+                  const jogadorGoleiro = membroGoleiro
+                    ? participantesPresenca.find(
+                        (p) => p.jogador.id === membroGoleiro.jogadorId,
+                      )?.jogador
+                    : undefined
+                  const vagasLinha = Math.max(0, quantidadeLinha - jogadores.length)
 
-                const vagasLinha = Math.max(
-                  0,
-                  quantidadeLinha - jogadores.length,
-                )
-
-                return {
-                  numeroGrupo,
-                  jogadores,
-                  goleiro,
-                  vagasLinha,
-                  completo: vagasLinha === 0 && Boolean(goleiro),
-                }
-              })
+                  return {
+                    numeroGrupo: formacao.grupoHistorico ?? formacao.ordem,
+                    ordemOperacional: formacao.ordem,
+                    jogadores,
+                    goleiro: jogadorGoleiro
+                      ? { jogador: jogadorGoleiro, ordem: formacao.ordem }
+                      : undefined,
+                    vagasLinha,
+                    completo: vagasLinha === 0 && Boolean(jogadorGoleiro),
+                  }
+                })
 
               const prontos = gruposOrganizacao.filter(
                 (grupo) => grupo.completo,
@@ -1551,10 +2514,21 @@ export default function NovaPelada() {
 
               const incompletos = gruposOrganizacao.length - prontos
 
+              // Chegada atrasada só aparece como pendente enquanto ainda não
+              // estiver materializada em nenhuma formação operacional v13.
+              const jogadoresJaOrganizados = new Set(
+                formacoesOperacionaisV13.flatMap(({ membros }) =>
+                  membros.map((membro) => membro.jogadorId),
+                ),
+              )
+
               const filaAtrasados = participantesPresenca
                 .filter(
                   (participante) =>
-                    participante.presente && participante.chegouAtrasado,
+                    participante.presente &&
+                    participante.chegouAtrasado &&
+                    participante.jogador.id !== undefined &&
+                    !jogadoresJaOrganizados.has(participante.jogador.id),
                 )
                 .sort(
                   (a, b) =>
@@ -1569,7 +2543,11 @@ export default function NovaPelada() {
                     className={`btn-organizacao-fila ${
                       organizacaoAberta ? 'aberto' : ''
                     }`}
-                    onClick={() => setOrganizacaoAberta((aberta) => !aberta)}
+                    onClick={async () => {
+                      const vaiAbrir = !organizacaoAberta
+                      setOrganizacaoAberta(vaiAbrir)
+                      if (vaiAbrir) await atualizarOrganizacaoOperacionalV13()
+                    }}
                     aria-expanded={organizacaoAberta}
                   >
                     <span>
@@ -1585,6 +2563,42 @@ export default function NovaPelada() {
 
                   {organizacaoAberta && (
                     <div className="organizacao-conteudo">
+                      {diagnosticoFilaV13 && (
+                        <div
+                          style={{
+                            padding: '10px 12px',
+                            marginBottom: 10,
+                            border: '1px solid #dce8e0',
+                            borderRadius: 12,
+                            background: '#fff',
+                            fontSize: 13,
+                            lineHeight: 1.45,
+                          }}
+                        >
+                          <strong>DIAGNÓSTICO DA FILA</strong>
+                          <div>
+                            Fila: {diagnosticoFilaV13.totalFila} •
+                            {' '}Linha: {diagnosticoFilaV13.linhaFila} •
+                            {' '}Goleiros: {diagnosticoFilaV13.goleirosFila}
+                          </div>
+                          <div>
+                            Em jogo: {diagnosticoFilaV13.jogadoresPartidaAtual} •
+                            {' '}Linha: {diagnosticoFilaV13.linhaPartidaAtual} •
+                            {' '}Goleiros: {diagnosticoFilaV13.goleirosPartidaAtual}
+                          </div>
+                          <div>
+                            Fora: {diagnosticoFilaV13.aguardandoFila} •
+                            {' '}Formações v13: {diagnosticoFilaV13.formacoesPersistidas} •
+                            {' '}Membros v13: {diagnosticoFilaV13.membrosFormacoesPersistidas}
+                          </div>
+                          <div>
+                            Grupos fora: {diagnosticoFilaV13.gruposAguardando
+                              .map((grupo) => `${grupo.grupo}: ${grupo.linhas}L/${grupo.goleiros}G`)
+                              .join(' • ') || 'nenhum'}
+                          </div>
+                        </div>
+                      )}
+
                       <div className="organizacao-aviso">
                         <strong>Partida continua normalmente</strong>
                         <span>
@@ -1685,18 +2699,42 @@ export default function NovaPelada() {
                                 </div>
 
                                 <div className="organizacao-jogadores">
-                                  {grupo.jogadores.map((jogador) => (
-                                    <div
-                                      key={`organizacao-jogador-${jogador.jogador.id}`}
-                                    >
-                                      <span>
-                                        #{jogador.numeroSorteado}
-                                      </span>
-                                      <strong>
-                                        {jogador.jogador.nomeExibicao}
-                                      </strong>
-                                    </div>
-                                  ))}
+                                  {grupo.jogadores.map(({ jogador }) => {
+                                    const numeroUltimaTampinha = ultimosNumerosTampinhaV13.find(
+                                      (item) => item.jogadorId === jogador.id,
+                                    )?.numero
+                                    const numeroInicial = resultadoSorteioLinha.find(
+                                      (item) => item.jogador.id === jogador.id,
+                                    )?.numeroSorteado
+                                    const numeroExibicao = numeroUltimaTampinha ?? numeroInicial
+
+                                    return (
+                                      <div
+                                        key={`organizacao-jogador-${jogador.id}`}
+                                      >
+                                        {numeroExibicao !== undefined ? (
+                                          <>
+                                            <span>#{numeroExibicao}</span>
+                                            <strong>{jogador.nomeExibicao}</strong>
+                                          </>
+                                        ) : (
+                                          <strong
+                                            style={{
+                                              gridColumn: '1 / -1',
+                                              width: '100%',
+                                              maxWidth: 'none',
+                                              whiteSpace: 'normal',
+                                              overflow: 'visible',
+                                              textOverflow: 'clip',
+                                              overflowWrap: 'anywhere',
+                                            }}
+                                          >
+                                            {jogador.nomeExibicao}
+                                          </strong>
+                                        )}
+                                      </div>
+                                    )
+                                  })}
 
                                   {Array.from(
                                     { length: grupo.vagasLinha },
@@ -2705,6 +3743,102 @@ export default function NovaPelada() {
         </>
       )}
 
+      {golAbertoLado !== null && partidaEmAndamento && (() => {
+        const timeGol = partidaEmAndamento.times.find((time) => time.lado === golAbertoLado)
+        const jogadoresDoTime = partidaEmAndamento.jogadores
+          .filter((item) => item.lado === golAbertoLado)
+          .sort((a, b) => a.ordemFormacao - b.ordemFormacao)
+
+        return (
+          <div className="identificacao-overlay" onClick={fecharRegistroGol}>
+            <div
+              className="identificacao-modal chegada-atrasada-modal"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="identificacao-modal-cabecalho">
+                <div>
+                  <span>PARTIDA {partidaEmAndamento.partida.numero}</span>
+                  <h2>Registrar gol</h2>
+                </div>
+                <button
+                  type="button"
+                  className="btn-fechar-identificacao"
+                  onClick={fecharRegistroGol}
+                  aria-label="Fechar"
+                  disabled={salvandoGol}
+                >
+                  ×
+                </button>
+              </div>
+
+              <p className="identificacao-explicacao chegada-atrasada-intro">
+                Gol para <strong>{timeGol?.corColete ?? `Time ${golAbertoLado}`}</strong>.
+                Selecione quem marcou. O goleiro também pode ser escolhido.
+              </p>
+
+              <div className="chegada-lista-jogadores">
+                {jogadoresDoTime.map((item) => {
+                  const participante = participantesPresenca.find(
+                    (p) => p.jogador.id === item.jogadorId,
+                  )
+                  const nome =
+                    participante?.jogador.nomeExibicao ?? `Jogador #${item.jogadorId}`
+                  const selecionado = autorGolId === item.jogadorId
+
+                  return (
+                    <button
+                      key={`${item.lado}-${item.jogadorId}`}
+                      type="button"
+                      className={`chegada-jogador-card${selecionado ? ' selecionado' : ''}`}
+                      onClick={() => {
+                        setAutorGolId(item.jogadorId)
+                        setErroGol('')
+                      }}
+                      disabled={salvandoGol}
+                    >
+                      <span className="chegada-jogador-avatar">
+                        {nome.trim().charAt(0).toUpperCase()}
+                      </span>
+                      <span className="chegada-jogador-dados">
+                        <strong>{nome}</strong>
+                        <small>{item.funcao === 'GOLEIRO' ? 'Goleiro' : 'Jogador de linha'}</small>
+                      </span>
+                      <span className="chegada-jogador-tipo">
+                        {item.funcao === 'GOLEIRO' ? 'GOLEIRO' : 'LINHA'}
+                      </span>
+                      <span className="chegada-jogador-check" aria-hidden="true">
+                        {selecionado ? '✓' : ''}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+
+              {erroGol && <div className="chegada-atrasada-erro">{erroGol}</div>}
+
+              <div className="chegada-atrasada-acoes chegada-atrasada-acoes-principal">
+                <button
+                  type="button"
+                  className="btn-chegada-novo"
+                  onClick={() => confirmarRegistroGol(true)}
+                  disabled={salvandoGol}
+                >
+                  GOL CONTRA
+                </button>
+                <button
+                  type="button"
+                  className="btn-confirmar-identificacao btn-confirmar-chegada"
+                  onClick={() => confirmarRegistroGol(false)}
+                  disabled={salvandoGol || autorGolId === null}
+                >
+                  {salvandoGol ? 'SALVANDO...' : 'CONFIRMAR GOL'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
       {chegadaAtrasadaAberta && (
         <div className="identificacao-overlay" onClick={fecharChegadaAtrasada}>
           <div
@@ -3198,6 +4332,324 @@ export default function NovaPelada() {
           </div>
         </div>
       )}
+      {confirmacaoProximaPartida && (
+        <div className="proxima-partida-overlay">
+          <div className="proxima-partida-modal" role="dialog" aria-modal="true">
+            <div className="proxima-partida-topo">
+              <span>PRÓXIMA PARTIDA</span>
+              <strong>PARTIDA {confirmacaoProximaPartida.numeroPartida}</strong>
+            </div>
+
+            <div className="proxima-partida-permanece">
+              <small>TIME QUE PERMANECE</small>
+              <strong>{confirmacaoProximaPartida.vencedor}</strong>
+            </div>
+
+            <div className="proxima-partida-entra">
+              <small>TIME QUE VAI ENTRAR</small>
+              <h2>GRUPO {confirmacaoProximaPartida.grupo}</h2>
+              <span>COLETE {confirmacaoProximaPartida.corEntrada}</span>
+            </div>
+
+            <div className="proxima-partida-lista">
+              <small>JOGADORES DE LINHA</small>
+              {confirmacaoProximaPartida.jogadores.map((nome, indice) => (
+                <div key={`${nome}-${indice}`}>
+                  <b>{indice + 1}</b>
+                  <strong>{nome}</strong>
+                </div>
+              ))}
+            </div>
+
+            <div className="proxima-partida-goleiro">
+              <span>🧤</span>
+              <div>
+                <small>GOLEIRO</small>
+                <strong>{confirmacaoProximaPartida.goleiro}</strong>
+                <em>{confirmacaoProximaPartida.descricaoGoleiro}</em>
+              </div>
+            </div>
+
+            <div className="proxima-partida-acoes">
+              <button
+                type="button"
+                className="proxima-partida-voltar"
+                onClick={() => setConfirmacaoProximaPartida(null)}
+                disabled={iniciandoProximaPartida}
+              >
+                VOLTAR
+              </button>
+              <button
+                type="button"
+                className="proxima-partida-confirmar"
+                onClick={iniciarProximaPartidaConfirmada}
+                disabled={iniciandoProximaPartida}
+              >
+                {iniciandoProximaPartida ? 'INICIANDO...' : 'CONFIRMAR E INICIAR'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmacaoFinalizacao && (
+        <div
+          className="confirmar-finalizacao-overlay"
+          onClick={() => {
+            if (!finalizandoPartida) setConfirmacaoFinalizacao(null)
+          }}
+        >
+          <div
+            className="confirmar-finalizacao-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="titulo-confirmar-finalizacao"
+            onClick={(evento) => evento.stopPropagation()}
+          >
+            <div className="confirmar-finalizacao-icone">🏁</div>
+            <span className="confirmar-finalizacao-etiqueta">FINALIZAR PARTIDA</span>
+            <h2 id="titulo-confirmar-finalizacao">Confirmar resultado?</h2>
+            <p className="confirmar-finalizacao-texto">
+              Confira o placar antes de gravar o resultado oficial.
+            </p>
+
+            <div className="confirmar-finalizacao-placar">
+              <div className="confirmar-finalizacao-time">
+                <small>TIME 1</small>
+                <strong>{confirmacaoFinalizacao.nomeTime1}</strong>
+              </div>
+
+              <span className="confirmar-finalizacao-numero">
+                {confirmacaoFinalizacao.placarTime1}
+              </span>
+              <span className="confirmar-finalizacao-x">×</span>
+              <span className="confirmar-finalizacao-numero">
+                {confirmacaoFinalizacao.placarTime2}
+              </span>
+
+              <div className="confirmar-finalizacao-time">
+                <small>TIME 2</small>
+                <strong>{confirmacaoFinalizacao.nomeTime2}</strong>
+              </div>
+            </div>
+
+            <div className="confirmar-finalizacao-aviso">
+              O resultado será gravado como oficial.
+            </div>
+
+            <div className="confirmar-finalizacao-acoes">
+              <button
+                type="button"
+                className="confirmar-finalizacao-cancelar"
+                onClick={() => setConfirmacaoFinalizacao(null)}
+                disabled={finalizandoPartida}
+              >
+                VOLTAR
+              </button>
+              <button
+                type="button"
+                className="confirmar-finalizacao-confirmar"
+                onClick={confirmarFinalizacaoPartida}
+                disabled={finalizandoPartida}
+              >
+                {finalizandoPartida ? 'FINALIZANDO...' : 'CONFIRMAR RESULTADO'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {resultadoPartidaAberto && (
+        <div className="resultado-partida-overlay">
+          <div className="resultado-partida-modal" role="dialog" aria-modal="true">
+            <div className="resultado-partida-icone">
+              {resultadoPartidaAberto.tipo === 'VITORIA' ? '🏆' : '🤝'}
+            </div>
+            <span className="resultado-partida-etiqueta">PARTIDA FINALIZADA</span>
+            <h2>
+              {resultadoPartidaAberto.tipo === 'VITORIA'
+                ? `${resultadoPartidaAberto.vencedor} VENCEU`
+                : 'EMPATE'}
+            </h2>
+            <div className="resultado-partida-placar">{resultadoPartidaAberto.placar}</div>
+
+            {resultadoPartidaAberto.tipo === 'VITORIA' ? (
+              <>
+                <div className="resultado-partida-vencedor">
+                  <small>VENCEDOR</small>
+                  <strong>{resultadoPartidaAberto.vencedor}</strong>
+                </div>
+                <p>
+                  <strong>{resultadoPartidaAberto.perdedor}</strong> retorna para a
+                  organização da fila. O resultado já está salvo.
+                </p>
+              </>
+            ) : (
+              <p>
+                O empate foi registrado oficialmente. Agora faremos a tampinha
+                para definir a prioridade operacional da rotação.
+              </p>
+            )}
+
+            <button
+              type="button"
+              className="resultado-partida-continuar"
+              onClick={() => setResultadoPartidaAberto(null)}
+            >
+              CONTINUAR
+            </button>
+          </div>
+        </div>
+      )}
+
+      {resultadoCascataAtrasado && (
+        <div className="cascata-atrasado-overlay" role="presentation">
+          <div className="cascata-atrasado-modal" role="dialog" aria-modal="true" aria-labelledby="titulo-cascata-atrasado">
+            <div className="cascata-atrasado-topo">
+              <span className="cascata-atrasado-icone">🎲</span>
+              <div>
+                <small>CHEGADA ATRASADA</small>
+                <h2 id="titulo-cascata-atrasado">Rotação realizada</h2>
+                <p>
+                  {resultadoCascataAtrasado.jogadorChegando === 'Fila operacional'
+                    ? 'A fila foi normalizada. Confira abaixo todas as tampinhas realizadas.'
+                    : <><strong>{resultadoCascataAtrasado.jogadorChegando}</strong> entrou na organização da fila.</>}
+                </p>
+              </div>
+            </div>
+
+            <div className="cascata-atrasado-etapas">
+              {resultadoCascataAtrasado.etapas.map((etapa, indice) => (
+                <section className="cascata-atrasado-card" key={`${etapa.grupo}-${indice}`}>
+                  <div className="cascata-atrasado-card-topo">
+                    <span>ETAPA {indice + 1}</span>
+                    <strong>GRUPO {etapa.grupo}</strong>
+                  </div>
+
+                  <div className="cascata-atrasado-numeros">
+                    {etapa.numeros.map((item) => {
+                      const saiu = item.nome === etapa.jogadorSaindo
+                      return (
+                        <div className={`cascata-atrasado-numero ${saiu ? 'saiu' : ''}`} key={`${item.nome}-${item.numero}`}>
+                          <b>{item.numero}</b>
+                          <span>{item.nome}</span>
+                          {saiu && <small>SAI</small>}
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  <div className="cascata-atrasado-troca">
+                    <div><small>SAI</small><strong>{etapa.jogadorSaindo}</strong></div>
+                    <span>→</span>
+                    <div><small>ENTRA</small><strong>{etapa.jogadorEntrando}</strong></div>
+                  </div>
+                </section>
+              ))}
+            </div>
+
+            {resultadoCascataAtrasado.etapas.length > 1 && (
+              <div className="cascata-atrasado-aviso">
+                <strong>Cascata de rotação concluída</strong>
+                <span>Quem saiu de um time foi encaminhado para a formação seguinte conforme a ordem da fila.</span>
+              </div>
+            )}
+
+            <button type="button" className="cascata-atrasado-continuar" onClick={() => setResultadoCascataAtrasado(null)}>
+              ENTENDI • CONTINUAR
+            </button>
+          </div>
+        </div>
+      )}
+
+      {confirmacaoEmpateAberta && dadosConfirmacaoEmpate && (
+        <div className="modal-overlay modal-rotacao-overlay">
+          <div className="modal-rotacao-empate" role="dialog" aria-modal="true">
+            <div className="modal-rotacao-topo"><small>PRÓXIMA PARTIDA</small><h2>{dadosConfirmacaoEmpate.titulo}</h2><p>{dadosConfirmacaoEmpate.subtitulo}</p></div>
+            <div className="modal-rotacao-times">
+              {dadosConfirmacaoEmpate.times.map((time) => (
+                <section className="modal-time-card" key={time.titulo}>
+                  <h3>{time.titulo}</h3>
+                  <div className="modal-time-linhas"><small>JOGADORES DE LINHA</small>
+                    {time.jogadores.map((nome, indice) => <div className="modal-jogador-linha" key={`${time.titulo}-${nome}-${indice}`}><span>{indice + 1}</span><strong>{nome}</strong></div>)}
+                  </div>
+                  <div className="modal-goleiro-destaque"><span>🥅</span><div><small>GOLEIRO</small><strong>{time.goleiro}</strong>{time.detalheGoleiro && <p>{time.detalheGoleiro}</p>}</div></div>
+                </section>
+              ))}
+            </div>
+            <div className="modal-rotacao-rodape-info"><strong>{dadosConfirmacaoEmpate.rodape}</strong></div>
+            <div className="modal-rotacao-acoes">
+              <button type="button" className="btn-modal-cancelar" onClick={() => {setConfirmacaoEmpateAberta(false);setDadosConfirmacaoEmpate(null);setAcaoConfirmacaoEmpate(null);setIniciandoProximaPartida(false)}} disabled={iniciandoProximaPartida}>VOLTAR</button>
+              <button type="button" className="btn-modal-iniciar" onClick={confirmarModalEmpate} disabled={iniciandoProximaPartida}>{iniciandoProximaPartida ? 'INICIANDO...' : 'CONFIRMAR E INICIAR PARTIDA'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+
+        .cascata-atrasado-overlay{position:fixed;inset:0;z-index:1400;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(10,25,18,.72);box-sizing:border-box}
+        .cascata-atrasado-modal{width:min(100%,620px);min-width:0;max-height:calc(100dvh - 36px);overflow-y:auto;padding:0;border-radius:22px;background:#fff;box-shadow:0 24px 70px rgba(0,0,0,.3);box-sizing:border-box}
+        .cascata-atrasado-topo{display:flex;align-items:flex-start;gap:13px;padding:22px;background:#edf8f2;border-bottom:1px solid #dce8e0}.cascata-atrasado-icone{display:grid;place-items:center;flex:0 0 48px;height:48px;border-radius:14px;background:#16834f;font-size:25px}.cascata-atrasado-topo>div{min-width:0}.cascata-atrasado-topo small{display:block;font-size:10px;font-weight:900;letter-spacing:1.2px;color:#16834f}.cascata-atrasado-topo h2{margin:3px 0 4px;font-size:26px;line-height:1.08;color:#173f2d}.cascata-atrasado-topo p{margin:0;color:#5b6c63;line-height:1.35}.cascata-atrasado-etapas{display:flex;flex-direction:column;gap:12px;padding:16px}.cascata-atrasado-card{min-width:0;border:1px solid #dce8e0;border-radius:16px;overflow:hidden;background:#fff}.cascata-atrasado-card-topo{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 13px;background:#f6faf7}.cascata-atrasado-card-topo span{font-size:9px;font-weight:900;letter-spacing:1px;color:#718078}.cascata-atrasado-card-topo strong{font-size:14px;color:#173f2d}.cascata-atrasado-numeros{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;padding:12px}.cascata-atrasado-numero{position:relative;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:82px;padding:8px 4px;border:1px solid #dce8e0;border-radius:12px;background:#f9fbfa;text-align:center}.cascata-atrasado-numero b{font-size:26px;line-height:1;color:#173f2d}.cascata-atrasado-numero span{max-width:100%;font-size:11px;font-weight:800;overflow-wrap:anywhere}.cascata-atrasado-numero.saiu{border:2px solid #c75858;background:#fff5f5}.cascata-atrasado-numero.saiu b{color:#a83d3d}.cascata-atrasado-numero small{position:absolute;top:5px;right:5px;padding:2px 5px;border-radius:999px;background:#a83d3d;color:#fff;font-size:7px;font-weight:900}.cascata-atrasado-troca{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:9px;padding:12px;border-top:1px solid #edf2ee;background:#fff}.cascata-atrasado-troca>div{min-width:0;display:flex;flex-direction:column;padding:10px;border-radius:11px;background:#f7f9f8}.cascata-atrasado-troca>div:last-child{background:#edf8f2}.cascata-atrasado-troca small{font-size:8px;font-weight:900;letter-spacing:1px;color:#718078}.cascata-atrasado-troca strong{font-size:15px;overflow-wrap:anywhere}.cascata-atrasado-troca>span{font-size:22px;font-weight:900;color:#16834f}.cascata-atrasado-aviso{display:flex;flex-direction:column;gap:3px;margin:0 16px 16px;padding:12px;border-radius:12px;background:#f6faf7;border:1px solid #dce8e0}.cascata-atrasado-aviso strong{font-size:13px;color:#173f2d}.cascata-atrasado-aviso span{font-size:12px;line-height:1.35;color:#5b6c63}.cascata-atrasado-continuar{width:calc(100% - 32px);min-height:52px;margin:0 16px 18px;border:0;border-radius:14px;background:#16834f;color:#fff;font-size:14px;font-weight:900;cursor:pointer}
+        @media(max-width:600px){.cascata-atrasado-overlay{align-items:flex-end;padding:0}.cascata-atrasado-modal{width:100%;max-width:none;max-height:94dvh;border-radius:22px 22px 0 0}.cascata-atrasado-topo{padding:18px 16px 15px}.cascata-atrasado-topo h2{font-size:23px}.cascata-atrasado-numeros{grid-template-columns:repeat(2,minmax(0,1fr));padding:10px}.cascata-atrasado-numero{min-height:72px}.cascata-atrasado-continuar{position:sticky;bottom:0;width:100%;margin:0;padding-bottom:env(safe-area-inset-bottom);border-radius:0;min-height:58px}.cascata-atrasado-etapas{padding:12px}.cascata-atrasado-aviso{margin:0 12px 12px}}
+
+        .proximo-time-destaque{width:100%;min-width:0;padding:16px;border:2px solid #16834f;border-radius:18px;background:#f4fbf7;box-sizing:border-box}
+        .proximo-time-cabecalho{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+        .proximo-time-cabecalho>div{display:flex;flex-direction:column;min-width:0}
+        .proximo-time-cabecalho small,.proximo-time-jogadores+small{font-size:10px;font-weight:900;letter-spacing:1px;color:#16834f}
+        .proximo-time-cabecalho strong{font-size:24px;line-height:1.05}
+        .proximo-time-cabecalho>span{padding:7px 10px;border-radius:999px;font-size:10px;font-weight:900}.proximo-time-cabecalho>span.pronto{background:#16834f;color:#fff}.proximo-time-cabecalho>span.incompleto{background:#f3e4e4;color:#9b3434}
+        .proximo-time-jogadores{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:12px}
+        .proximo-time-jogador{display:flex;align-items:center;gap:8px;min-width:0;padding:10px;border:1px solid #dce8e0;border-radius:12px;background:#fff}
+        .proximo-time-jogador b{display:grid;place-items:center;flex:0 0 25px;height:25px;border-radius:50%;background:#e6f4ec;color:#16834f;font-size:12px}.proximo-time-jogador span{min-width:0;font-weight:800;overflow-wrap:anywhere}
+        .proximo-time-goleiro{display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:11px;border-radius:12px;background:#eaf5ef}.proximo-time-goleiro>span{font-size:25px}.proximo-time-goleiro>div{display:flex;flex-direction:column;min-width:0}.proximo-time-goleiro small{font-size:9px;font-weight:900;letter-spacing:1px;color:#16834f}.proximo-time-goleiro strong{overflow-wrap:anywhere}.proximo-time-goleiro em{font-size:11px;color:#65756c;font-style:normal}
+        .proxima-partida-overlay{position:fixed;inset:0;z-index:1250;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(10,25,18,.72);box-sizing:border-box}
+        .proxima-partida-modal{width:min(100%,540px);min-width:0;max-height:calc(100dvh - 36px);overflow-y:auto;padding:22px;border-radius:22px;background:#fff;box-shadow:0 24px 70px rgba(0,0,0,.3);box-sizing:border-box}
+        .proxima-partida-topo{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px}.proxima-partida-topo span{font-size:11px;font-weight:900;letter-spacing:1px;color:#16834f}.proxima-partida-topo strong{font-size:13px}
+        .proxima-partida-permanece{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;border-radius:13px;background:#f1f5f2}.proxima-partida-permanece small{font-size:10px;font-weight:900;color:#66736c}.proxima-partida-permanece strong{font-size:20px;overflow-wrap:anywhere}
+        .proxima-partida-entra{text-align:center;margin:12px 0;padding:15px;border:2px solid #16834f;border-radius:16px;background:#edf8f2}.proxima-partida-entra small{font-size:10px;font-weight:900;letter-spacing:1px;color:#16834f}.proxima-partida-entra h2{margin:3px 0;font-size:30px}.proxima-partida-entra span{font-size:12px;font-weight:900}
+        .proxima-partida-lista{display:flex;flex-direction:column;gap:7px;margin:14px 0}.proxima-partida-lista>small{font-size:10px;font-weight:900;letter-spacing:1px;color:#65756c}.proxima-partida-lista>div{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid #dce8e0;border-radius:11px}.proxima-partida-lista b{display:grid;place-items:center;flex:0 0 27px;height:27px;border-radius:50%;background:#16834f;color:#fff;font-size:12px}.proxima-partida-lista strong{font-size:16px;overflow-wrap:anywhere}
+        .proxima-partida-goleiro{display:flex;align-items:center;gap:12px;padding:13px;border-radius:13px;background:#eaf5ef}.proxima-partida-goleiro>span{font-size:30px}.proxima-partida-goleiro>div{display:flex;flex-direction:column;min-width:0}.proxima-partida-goleiro small{font-size:9px;font-weight:900;letter-spacing:1px;color:#16834f}.proxima-partida-goleiro strong{font-size:18px;overflow-wrap:anywhere}.proxima-partida-goleiro em{font-size:11px;color:#65756c;font-style:normal}
+        .proxima-partida-acoes{display:grid;grid-template-columns:1fr 2fr;gap:10px;margin-top:18px;position:sticky;bottom:-22px;padding:10px 0 0;background:#fff}.proxima-partida-acoes button{min-height:50px;border-radius:13px;font-weight:900}.proxima-partida-voltar{border:1px solid #cad8cf;background:#fff;color:#405048}.proxima-partida-confirmar{border:0;background:#16834f;color:#fff}
+        @media(max-width:600px){.proximo-time-jogadores{grid-template-columns:1fr}.proxima-partida-overlay{align-items:flex-end;padding:0}.proxima-partida-modal{width:100%;max-width:none;max-height:92dvh;border-radius:22px 22px 0 0;padding:20px 16px calc(16px + env(safe-area-inset-bottom))}.proxima-partida-acoes{bottom:calc(-16px - env(safe-area-inset-bottom));padding-bottom:calc(10px + env(safe-area-inset-bottom))}}
+
+        .confirmar-finalizacao-overlay{position:fixed;inset:0;z-index:1250;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(10,25,18,.68);box-sizing:border-box}
+        .confirmar-finalizacao-modal{width:min(100%,500px);min-width:0;padding:28px 22px 22px;border-radius:22px;background:#fff;box-shadow:0 24px 70px rgba(0,0,0,.28);text-align:center;box-sizing:border-box}
+        .confirmar-finalizacao-icone{font-size:42px;line-height:1;margin-bottom:10px}
+        .confirmar-finalizacao-etiqueta{display:inline-block;margin-bottom:8px;font-size:12px;font-weight:900;letter-spacing:1.2px;color:#16834f}
+        .confirmar-finalizacao-modal h2{margin:0;font-size:clamp(27px,7vw,38px);line-height:1.08;color:#17231d}
+        .confirmar-finalizacao-texto{margin:10px 0 18px;color:#617067;line-height:1.4}
+        .confirmar-finalizacao-placar{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto minmax(0,1fr);align-items:center;gap:10px;margin:0 0 14px;padding:16px 12px;border:1px solid #dce8e0;border-radius:16px;background:#f7faf8;box-sizing:border-box}
+        .confirmar-finalizacao-time{min-width:0;display:flex;flex-direction:column;gap:3px}
+        .confirmar-finalizacao-time small{font-size:10px;font-weight:900;letter-spacing:.8px;color:#7a8b81}
+        .confirmar-finalizacao-time strong{font-size:14px;overflow-wrap:anywhere;text-transform:uppercase}
+        .confirmar-finalizacao-numero{font-size:34px;font-weight:950;line-height:1;color:#17231d}
+        .confirmar-finalizacao-x{font-size:20px;font-weight:900;color:#839087}
+        .confirmar-finalizacao-aviso{margin-bottom:18px;padding:11px 12px;border-radius:12px;background:#edf8f2;color:#286044;font-size:13px;font-weight:800}
+        .confirmar-finalizacao-acoes{display:grid;grid-template-columns:1fr 1.35fr;gap:10px}
+        .confirmar-finalizacao-acoes button{min-width:0;min-height:52px;border-radius:14px;font-size:13px;font-weight:900;cursor:pointer;box-sizing:border-box}
+        .confirmar-finalizacao-cancelar{border:1px solid #cfdcd4;background:#fff;color:#405048}
+        .confirmar-finalizacao-confirmar{border:0;background:#16834f;color:#fff}
+        .confirmar-finalizacao-acoes button:disabled{opacity:.6;cursor:not-allowed}
+        @media(max-width:600px){.confirmar-finalizacao-overlay{align-items:flex-end;padding:0}.confirmar-finalizacao-modal{width:100%;max-width:none;border-radius:22px 22px 0 0;padding:24px 18px calc(18px + env(safe-area-inset-bottom))}.confirmar-finalizacao-placar{grid-template-columns:minmax(0,1fr) auto auto auto minmax(0,1fr);gap:7px;padding:15px 9px}.confirmar-finalizacao-numero{font-size:31px}.confirmar-finalizacao-time strong{font-size:12px}.confirmar-finalizacao-acoes{grid-template-columns:1fr}.confirmar-finalizacao-confirmar{order:-1}}
+        .resultado-partida-overlay{position:fixed;inset:0;z-index:1200;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(10,25,18,.68);box-sizing:border-box}
+        .resultado-partida-modal{width:min(100%,480px);min-width:0;padding:28px 22px 22px;border-radius:22px;background:#fff;box-shadow:0 24px 70px rgba(0,0,0,.28);text-align:center;box-sizing:border-box}
+        .resultado-partida-icone{font-size:46px;line-height:1;margin-bottom:12px}
+        .resultado-partida-etiqueta{display:inline-block;margin-bottom:8px;font-size:12px;font-weight:900;letter-spacing:1.2px;color:#16834f}
+        .resultado-partida-modal h2{margin:0;font-size:clamp(28px,7vw,40px);line-height:1.05;overflow-wrap:anywhere}
+        .resultado-partida-placar{margin:18px 0;padding:14px 12px;border:1px solid #dce8e0;border-radius:15px;background:#f7faf8;font-size:clamp(18px,5vw,24px);font-weight:900;overflow-wrap:anywhere}
+        .resultado-partida-vencedor{display:flex;flex-direction:column;gap:4px;margin:0 auto 14px;padding:14px;border:2px solid #16834f;border-radius:15px;background:#edf8f2}
+        .resultado-partida-vencedor small{font-size:11px;font-weight:900;letter-spacing:1px;color:#16834f}
+        .resultado-partida-vencedor strong{font-size:24px;overflow-wrap:anywhere}
+        .resultado-partida-modal p{margin:14px 0 20px;color:#53625a;line-height:1.45}
+        .resultado-partida-continuar{width:100%;min-height:52px;border:0;border-radius:14px;background:#16834f;color:#fff;font-size:15px;font-weight:900;cursor:pointer}
+        @media(max-width:600px){.resultado-partida-overlay{align-items:flex-end;padding:0}.resultado-partida-modal{width:100%;max-width:none;border-radius:22px 22px 0 0;padding:24px 18px calc(18px + env(safe-area-inset-bottom))}}
+        .tampinha-resultado-destaque{width:100%;display:flex;flex-direction:column;gap:16px}.tampinha-titulo{text-align:center}.tampinha-titulo small{display:block;font-size:12px;font-weight:900;letter-spacing:1.4px;color:#537062}.tampinha-titulo strong{display:block;font-size:clamp(22px,5vw,32px);color:#103f2b}
+        .tampinha-numeros{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:9px;align-items:center}.tampinha-time{min-width:0;min-height:126px;border:2px solid #d8e5dc;border-radius:16px;background:#fff;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:12px 7px}.tampinha-time.vencedor{border:3px solid #16834f;background:#edf8f1;box-shadow:0 6px 18px rgba(22,131,79,.14)}.tampinha-time>span{font-size:14px;font-weight:900;text-transform:uppercase}.tampinha-time>b{font-size:clamp(40px,10vw,62px);line-height:1;margin:7px 0;color:#183e2d}.tampinha-time.vencedor>b{color:#16834f}.tampinha-time>small{font-size:11px;font-weight:900;color:#16834f}.tampinha-versus{font-size:24px;font-weight:900;color:#789083}.tampinha-explicacao{border-radius:12px;padding:12px 14px;background:#f6faf7;border:1px solid #dce8e0}.tampinha-explicacao strong,.tampinha-explicacao span{display:block}.tampinha-explicacao span{font-size:14px;line-height:1.4;color:#4d6559}
+        .modal-rotacao-overlay{padding:18px;overflow-y:auto;align-items:center}.modal-rotacao-empate{width:min(100%,760px);max-height:calc(100vh - 36px);overflow-y:auto;background:#fff;border-radius:18px;box-shadow:0 22px 60px rgba(8,37,24,.28)}.modal-rotacao-topo{padding:22px;background:#f2f8f4;border-bottom:1px solid #dce8e0;text-align:center}.modal-rotacao-topo small{font-size:11px;font-weight:900;letter-spacing:1.5px;color:#16834f}.modal-rotacao-topo h2{margin:5px 0 7px;font-size:clamp(21px,5vw,29px);color:#173f2d}.modal-rotacao-topo p{margin:0;font-size:15px;color:#5a6d63}.modal-rotacao-times{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;padding:18px}.modal-time-card{min-width:0;border:1px solid #dce8e0;border-radius:15px;overflow:hidden}.modal-time-card h3{margin:0;padding:13px;background:#173f2d;color:#fff;font-size:16px;text-align:center}.modal-time-linhas{padding:14px}.modal-time-linhas>small{font-size:10px;font-weight:900;letter-spacing:1px;color:#718078}.modal-jogador-linha{display:flex;align-items:center;gap:9px;min-height:42px;border-bottom:1px solid #edf2ee}.modal-jogador-linha span{flex:0 0 28px;height:28px;border-radius:50%;display:grid;place-items:center;background:#edf5f0;color:#16834f;font-size:12px;font-weight:900}.modal-jogador-linha strong{font-size:16px;color:#273b31}.modal-goleiro-destaque{margin:0 14px 14px;padding:12px;border-radius:12px;background:#edf8f1;border:1px solid #cce5d5;display:flex;align-items:center;gap:11px}.modal-goleiro-destaque>span{font-size:28px}.modal-goleiro-destaque small,.modal-goleiro-destaque strong,.modal-goleiro-destaque p{display:block;margin:0}.modal-goleiro-destaque strong{font-size:18px;color:#103f2b}.modal-goleiro-destaque p{font-size:12px;color:#557064}.modal-rotacao-rodape-info{margin:0 18px;padding:12px;border-radius:11px;background:#f7f9f8;text-align:center}.modal-rotacao-acoes{display:grid;grid-template-columns:.7fr 1.3fr;gap:10px;padding:16px 18px 18px}.btn-modal-cancelar,.btn-modal-iniciar{min-width:0;min-height:52px;border-radius:12px;padding:10px;font-size:14px;font-weight:900}.btn-modal-cancelar{border:1px solid #ccd8d0;background:#fff;color:#52645a}.btn-modal-iniciar{border:0;background:#16834f;color:#fff}
+        @media(max-width:620px){.modal-rotacao-overlay{padding:0;align-items:flex-end}.modal-rotacao-empate{width:100%;max-height:94vh;border-radius:18px 18px 0 0}.modal-rotacao-topo{padding:18px 16px 14px}.modal-rotacao-times{grid-template-columns:1fr;padding:12px}.modal-rotacao-rodape-info{margin:0 12px}.modal-rotacao-acoes{position:sticky;bottom:0;background:#fff;padding:12px;border-top:1px solid #e5ece7;grid-template-columns:.65fr 1.35fr}.btn-modal-cancelar,.btn-modal-iniciar{min-height:54px;font-size:13px}.tampinha-numeros{gap:6px}.tampinha-time{min-height:116px;padding:10px 5px}.tampinha-time>span{font-size:12px}}
+      `}</style>
+
     </div>
   )
 }
