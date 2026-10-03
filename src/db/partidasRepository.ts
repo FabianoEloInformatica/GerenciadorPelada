@@ -2867,17 +2867,33 @@ export async function normalizarFilaOperacionalV13(
     const grupoHistorico =
       item.formacao.grupoHistorico ?? proximoGrupoVirtual++
 
+    /*
+     * IMPORTANTE: não espalhamos item.formacao aqui.
+     * Este é um registro NOVO em uma store com keyPath "id" + autoIncrement.
+     * Montamos um objeto totalmente novo somente com os campos persistíveis,
+     * garantindo que nenhuma propriedade "id" antiga/undefined seja carregada.
+     */
     const formacao: FormacaoOperacionalDB = {
-      ...item.formacao,
-      id: undefined,
       sessaoId,
       ordem,
       status: 'AGUARDANDO',
+      prioridade: item.formacao.prioridade,
       grupoHistorico,
       atualizadoEm: agora,
       criadoEm: item.formacao.criadoEm || agora,
     }
-    const formacaoId = await formacoesStore.add(formacao)
+
+    let formacaoId: number
+    try {
+      formacaoId = await formacoesStore.add(formacao)
+    } catch (erro) {
+      const possuiId = Object.prototype.hasOwnProperty.call(formacao, 'id')
+      throw new Error(
+        `V13 ADD FORMAÇÃO falhou: ordem=${ordem}; grupo=${grupoHistorico}; ` +
+          `possuiId=${possuiId}; id=${String(formacao.id)}. ` +
+          `${erro instanceof Error ? erro.message : String(erro)}`,
+      )
+    }
 
     const membrosCriados: FormacaoOperacionalMembroDB[] = []
     for (let posicao = 0; posicao < item.membros.length; posicao += 1) {
@@ -2891,7 +2907,25 @@ export async function normalizarFilaOperacionalV13(
         criadoEm: agora,
         atualizadoEm: agora,
       }
-      const membroId = await membrosStore.add(membro)
+      /*
+       * Registro novo em store com keyPath "id" + autoIncrement.
+       * O objeto é criado do zero e não recebe id antes do add().
+       * O diagnóstico abaixo identifica imediatamente jogador/formação
+       * caso o IndexedDB rejeite a gravação.
+       */
+      let membroId: number
+      try {
+        membroId = await membrosStore.add(membro)
+      } catch (erro) {
+        const possuiId = Object.prototype.hasOwnProperty.call(membro, 'id')
+        throw new Error(
+          `V13 ADD MEMBRO falhou: jogador=${membroTrabalho.jogadorId}; ` +
+            `formacao=${formacaoId}; ordem=${posicao + 1}; ` +
+            `possuiId=${possuiId}; id=${String(membro.id)}. ` +
+            `${erro instanceof Error ? erro.message : String(erro)}`,
+        )
+      }
+
       membrosCriados.push({ ...membro, id: membroId })
 
       const fila = await indiceFilaJogador.get([
@@ -2914,7 +2948,15 @@ export async function normalizarFilaOperacionalV13(
     })
   }
 
-  await tx.done
+  try {
+    await tx.done
+  } catch (erro) {
+    throw new Error(
+      `V13 COMMIT DA TRANSAÇÃO falhou. ${
+        erro instanceof Error ? erro.message : String(erro)
+      }`,
+    )
+  }
 
   // Invariante final: depois da normalização não pode existir parcial antes de completo.
   const existeParcialAntesDeCompleto = criadas.some((item, indice) => {
