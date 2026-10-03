@@ -1558,12 +1558,8 @@ export async function organizarChegadaAtrasadaNaFila(
   await incluirChegadaAtrasadaNaFila(sessaoId, jogadorId, funcao)
 
   const db = await obterBanco()
-  const tx = db.transaction(
-    ['fila_operacional', 'tampinhas_substituicao'],
-    'readwrite',
-  )
+  const tx = db.transaction('fila_operacional', 'readwrite')
   const filaStore = tx.objectStore('fila_operacional')
-  const tampinhasStore = tx.objectStore('tampinhas_substituicao')
   const indiceJogador = filaStore.index('por-sessao-jogador')
   const todos = await filaStore.index('por-sessao').getAll(sessaoId)
   const agora = new Date().toISOString()
@@ -1576,6 +1572,53 @@ export async function organizarChegadaAtrasadaNaFila(
     return (a.id ?? 0) - (b.id ?? 0)
   })
 
+  const atual = await indiceJogador.get([sessaoId, jogadorId])
+  if (!atual) throw new Error('Chegada atrasada não foi encontrada na fila.')
+
+  /*
+   * LINHA — REGRA GENÉRICA PARA N ATRASADOS
+   * ----------------------------------------
+   * Não fazemos tampinha individual no momento de cada cadastro.
+   *
+   * Motivo: se três atletas chegam em sequência, sortear a cada inclusão
+   * espalharia um atleta por time. Os atrasados que AINDA NÃO JOGARAM precisam
+   * permanecer como um bloco prioritário. A normalização V13 monta blocos com
+   * `quantidadeLinha` atletas e, se o último bloco ficar parcial, retira de UMA
+   * mesma formação de retorno apenas a quantidade necessária por tampinha.
+   *
+   * Portanto funciona para 1, 2, 3, 10... chegadas e também se a configuração
+   * do time mudar de 4 para qualquer outra quantidade de jogadores de linha.
+   * Assim que o atleta jogar e sair da quadra, sincronizarFilaComPartida()
+   * converte sua prioridade para RETORNO e ele deixa automaticamente deste bloco.
+   */
+  if (funcao === 'LINHA') {
+    await filaStore.put({
+      ...atual,
+      grupoOrigem: undefined,
+      prioridade: 'CHEGADA_ATRASADA',
+      status: 'AGUARDANDO',
+      atualizadoEm: agora,
+    })
+    await tx.done
+
+    // Os parâmetros permanecem na assinatura porque a normalização esportiva
+    // usa esses valores logo depois; evitamos regras duplicadas nesta função.
+    void quantidadeLinha
+    void totalParticipantes
+    void menorNumeroSai
+
+    return {
+      tipo: funcao,
+      cascata: [],
+      aguardando: true,
+    }
+  }
+
+  /*
+   * GOLEIRO continua com a regra própria: completa o primeiro time aguardando
+   * sem goleiro. Se todos já possuem goleiro, ultrapassa somente goleiro de
+   * RETORNO; quem ainda não jogou conserva a prioridade.
+   */
   const grupos = new Map<number, FilaOperacionalDB[]>()
   for (const item of ordenados) {
     if (item.status !== 'AGUARDANDO' || item.grupoOrigem === undefined) continue
@@ -1592,176 +1635,58 @@ export async function organizarChegadaAtrasadaNaFila(
     }))
     .sort((a, b) => a.primeiraPosicao - b.primeiraPosicao)
 
-  const atual = await indiceJogador.get([sessaoId, jogadorId])
-  if (!atual) throw new Error('Chegada atrasada não foi encontrada na fila.')
-
-  if (funcao === 'GOLEIRO') {
-    const destino = ordemGrupos.find(({ itens }) => {
-      const linhas = itens.filter((i) => i.funcao === 'LINHA').length
-      const temGoleiro = itens.some((i) => i.funcao === 'GOLEIRO')
-      return linhas > 0 && !temGoleiro
-    })
-
-    if (destino) {
-      await filaStore.put({ ...atual, grupoOrigem: destino.grupo, atualizadoEm: agora })
-      await tx.done
-      return { tipo: funcao, grupoDestino: destino.grupo, cascata: [], aguardando: false }
-    }
-
-    /*
-     * Todos os times têm goleiro. O atrasado só ultrapassa goleiro que já
-     * jogou (RETORNO). Goleiro aguardando a primeira queda mantém sua vez.
-     */
-    const primeiroComGoleiroRetorno = ordemGrupos.find(({ itens }) =>
-      itens.some(
-        (i) => i.funcao === 'GOLEIRO' && i.prioridade === 'RETORNO',
-      ),
-    )
-
-    if (primeiroComGoleiroRetorno) {
-      const goleiroRetorno = primeiroComGoleiroRetorno.itens.find(
-        (i) => i.funcao === 'GOLEIRO' && i.prioridade === 'RETORNO',
-      )!
-      await filaStore.put({
-        ...goleiroRetorno,
-        grupoOrigem: undefined,
-        atualizadoEm: agora,
-      })
-      await filaStore.put({
-        ...atual,
-        grupoOrigem: primeiroComGoleiroRetorno.grupo,
-        atualizadoEm: agora,
-      })
-      await tx.done
-      return {
-        tipo: funcao,
-        grupoDestino: primeiroComGoleiroRetorno.grupo,
-        cascata: [],
-        aguardando: false,
-      }
-    }
-
-    await tx.done
-    return { tipo: funcao, cascata: [], aguardando: true }
-  }
-
-  // Primeiro preenche vaga real, sempre respeitando a ordem da fila.
-  const incompleto = ordemGrupos.find(({ itens }) => {
-    const linhas = itens.filter((i) => i.funcao === 'LINHA')
-    // Atrasado completa vagas de quem ainda não jogou/atrasados. Uma formação
-    // parcial composta só por RETORNOS não pode furar a cascata de prioridade.
-    return (
-      linhas.length > 0 &&
-      linhas.length < quantidadeLinha &&
-      linhas.some((i) => i.prioridade !== 'RETORNO')
-    )
+  const destino = ordemGrupos.find(({ itens }) => {
+    const linhas = itens.filter((i) => i.funcao === 'LINHA').length
+    const temGoleiro = itens.some((i) => i.funcao === 'GOLEIRO')
+    return linhas > 0 && !temGoleiro
   })
 
-  if (incompleto) {
-    await filaStore.put({ ...atual, grupoOrigem: incompleto.grupo, atualizadoEm: agora })
-    await tx.done
-    return { tipo: funcao, grupoDestino: incompleto.grupo, cascata: [], aguardando: false }
-  }
-
-  const maiorGrupo = ordenados.reduce(
-    (maior, item) => Math.max(maior, item.grupoOrigem ?? 0),
-    0,
-  )
-
-  // Só retornos completos sofrem a cascata. Quem ainda não jogou mantém a 1ª chance.
-  const retornos = ordemGrupos.filter(({ itens }) => {
-    const linhas = itens.filter((i) => i.funcao === 'LINHA')
-    return (
-      linhas.length >= quantidadeLinha &&
-      linhas.every((i) => i.prioridade === 'RETORNO')
-    )
-  })
-
-  let entrandoId = jogadorId
-  const cascata: TampinhaSubstituicaoDB[] = []
-
-  for (const retorno of retornos) {
-    const linhas = retorno.itens
-      .filter((i) => i.funcao === 'LINHA')
-      .slice(0, quantidadeLinha)
-
-    const numeros = sortearNumerosUnicos(
-      Math.max(totalParticipantes, linhas.length),
-      linhas.length,
-    )
-    const pares = linhas.map((item, indice) => ({
-      jogadorId: item.jogadorId,
-      numero: numeros[indice],
-    }))
-    const escolhido = [...pares].sort((a, b) =>
-      menorNumeroSai ? a.numero - b.numero : b.numero - a.numero,
-    )[0]
-
-    const itemEntrando = await indiceJogador.get([sessaoId, entrandoId])
-    const itemSaindo = await indiceJogador.get([sessaoId, escolhido.jogadorId])
-    if (!itemEntrando || !itemSaindo) {
-      throw new Error('Não foi possível concluir a cascata de substituição.')
-    }
-
+  if (destino) {
     await filaStore.put({
-      ...itemEntrando,
-      grupoOrigem: retorno.grupo,
+      ...atual,
+      grupoOrigem: destino.grupo,
       atualizadoEm: agora,
     })
+    await tx.done
+    return {
+      tipo: funcao,
+      grupoDestino: destino.grupo,
+      cascata: [],
+      aguardando: false,
+    }
+  }
+
+  const primeiroComGoleiroRetorno = ordemGrupos.find(({ itens }) =>
+    itens.some(
+      (i) => i.funcao === 'GOLEIRO' && i.prioridade === 'RETORNO',
+    ),
+  )
+
+  if (primeiroComGoleiroRetorno) {
+    const goleiroRetorno = primeiroComGoleiroRetorno.itens.find(
+      (i) => i.funcao === 'GOLEIRO' && i.prioridade === 'RETORNO',
+    )!
     await filaStore.put({
-      ...itemSaindo,
+      ...goleiroRetorno,
       grupoOrigem: undefined,
-      prioridade: 'RETORNO',
       atualizadoEm: agora,
     })
-
-    const registro: TampinhaSubstituicaoDB = {
-      sessaoId,
-      grupo: retorno.grupo,
-      jogadorEntrandoId: entrandoId,
-      jogadorSaindoId: escolhido.jogadorId,
-      numeros: pares,
-      menorNumeroSai,
-      criadoEm: agora,
-    }
-    const id = await tampinhasStore.add(registro)
-    cascata.push({ ...registro, id })
-    entrandoId = escolhido.jogadorId
-  }
-
-  // O último deslocado inicia a próxima formação; outros atrasados completam por ordem.
-  const itemFinal = await indiceJogador.get([sessaoId, entrandoId])
-  if (!itemFinal) throw new Error('Jogador final da cascata não encontrado.')
-  const novoGrupo = maiorGrupo + 1
-  await filaStore.put({
-    ...itemFinal,
-    grupoOrigem: novoGrupo,
-    atualizadoEm: agora,
-  })
-
-  // Se havia goleiro aguardando sem time, o primeiro pela prioridade completa
-  // imediatamente a nova formação criada no fim da cascata.
-  const goleiroLivre = ordenados.find(
-    (item) =>
-      item.status === 'AGUARDANDO' &&
-      item.funcao === 'GOLEIRO' &&
-      item.grupoOrigem === undefined,
-  )
-  if (goleiroLivre) {
     await filaStore.put({
-      ...goleiroLivre,
-      grupoOrigem: novoGrupo,
+      ...atual,
+      grupoOrigem: primeiroComGoleiroRetorno.grupo,
       atualizadoEm: agora,
     })
+    await tx.done
+    return {
+      tipo: funcao,
+      grupoDestino: primeiroComGoleiroRetorno.grupo,
+      cascata: [],
+      aguardando: false,
+    }
   }
 
   await tx.done
-  return {
-    tipo: funcao,
-    grupoDestino: cascata.length > 0 ? cascata[0].grupo : novoGrupo,
-    cascata,
-    aguardando: false,
-  }
+  return { tipo: funcao, cascata: [], aguardando: true }
 }
 
 export type ResultadoPreparacaoEmpateOperacional = {
@@ -2400,7 +2325,16 @@ export async function reconstruirFormacoesOperacionaisV13(
     const item = aguardando[posicao]
     let destino: FormacaoMemoria | undefined
 
-    if (item.grupoOrigem !== undefined) {
+    /*
+     * Jogador de LINHA que chegou atrasado e ainda não jogou NÃO fica preso ao
+     * grupo histórico recebido por uma normalização anterior. Todos os atrasados
+     * pendentes são reagrupados pela ordem de chegada em blocos de
+     * `quantidadeLinha`. Isso torna a regra genérica para qualquer quantidade.
+     */
+    const reagruparAtrasadoLinha =
+      item.funcao === 'LINHA' && item.prioridade === 'CHEGADA_ATRASADA'
+
+    if (item.grupoOrigem !== undefined && !reagruparAtrasadoLinha) {
       destino = porGrupo.get(item.grupoOrigem)
       if (!destino) {
         destino = {
@@ -2422,6 +2356,9 @@ export async function reconstruirFormacoesOperacionaisV13(
         .reverse()
         .find((formacao) => {
           if (formacao.grupoHistorico !== undefined) return false
+          // Blocos sem grupo só se misturam quando possuem a mesma prioridade.
+          // Assim CHEGADA_ATRASADA não é espalhada entre formações de RETORNO.
+          if (formacao.prioridade !== item.prioridade) return false
           const linhas = formacao.membros.filter(
             (membro) => membro.funcao === 'LINHA',
           ).length
@@ -2691,80 +2628,109 @@ export async function normalizarFilaOperacionalV13(
   const cascata: TampinhaSubstituicaoDB[] = []
 
   /*
-   * Todos os jogadores da formação parcial têm prioridade sobre as formações
-   * posteriores. Processamos cada um mantendo os que já entraram protegidos:
-   * uma tampinha posterior nunca pode expulsar alguém que acabou de exercer
-   * uma prioridade mais antiga nesta mesma normalização.
+   * CASCATA EM LOTE
+   * ---------------
+   * A formação parcial é tratada como UM BLOCO prioritário.
+   *
+   * Exemplo com 4 jogadores por time e 3 atrasados:
+   *   [Atrasado1, Atrasado2, Atrasado3] -> [A, B, C, D]
+   *
+   * Fazemos UMA tampinha entre A/B/C/D. Se menorNumeroSai=true, os 3 menores
+   * saem de uma vez e o maior permanece com os 3 atrasados. Os 3 deslocados
+   * seguem JUNTOS para a próxima formação, repetindo a mesma regra se preciso.
+   *
+   * Isso é genérico: o tamanho do lote vem da formação parcial e a capacidade
+   * vem de `quantidadeLinha`. Não existem casos especiais para 1, 2, 3, 10...
    */
   const origemParcial = trabalho[indiceParcial]
-  const prioritarios = origemParcial.membros
+  let loteEntrando = origemParcial.membros
     .filter((m) => m.funcao === 'LINHA')
     .sort((a, b) => a.ordem - b.ordem)
     .map((m) => m.jogadorId)
 
-  // Retira os prioritários da formação quebrada; goleiro, se houver, fica nela.
+  // O bloco sai da formação parcial; goleiro, se houver, permanece nela.
   origemParcial.membros = origemParcial.membros.filter(
     (m) => m.funcao !== 'LINHA',
   )
 
-  let indiceDestinoInicial = indiceParcial + 1
+  for (
+    let indice = indiceParcial + 1;
+    indice < trabalho.length && loteEntrando.length > 0;
+    indice += 1
+  ) {
+    const destino = trabalho[indice]
+    const linhasDestino = destino.membros.filter((m) => m.funcao === 'LINHA')
+    // Fotografia dos ocupantes que já estavam aqui antes deste lote chegar.
+    const linhasOriginais = [...linhasDestino]
+    const vagasLivres = Math.max(0, quantidadeLinha - linhasDestino.length)
 
-  for (const prioritarioId of prioritarios) {
-    let entrandoId = prioritarioId
-    let protegidosNoDestino = new Set<number>()
-
-    for (let indice = indiceDestinoInicial; indice < trabalho.length; indice += 1) {
-      const destino = trabalho[indice]
-      const linhasDestino = destino.membros.filter((m) => m.funcao === 'LINHA')
-
-      // Se encontramos vaga real, a prioridade entra sem tampinha e a cascata termina.
-      if (linhasDestino.length < quantidadeLinha) {
+    /*
+     * Vaga real não exige tampinha. Preenche o máximo possível preservando a
+     * ordem do bloco. Se ainda restar gente, o restante continua para frente.
+     */
+    if (vagasLivres > 0) {
+      const entrandoSemSorteio = loteEntrando.splice(0, vagasLivres)
+      for (const jogadorId of entrandoSemSorteio) {
         destino.membros.push({
-          jogadorId: entrandoId,
+          jogadorId,
           funcao: 'LINHA',
           ordem: destino.membros.length + 1,
         })
-        entrandoId = -1
-        break
       }
+      if (loteEntrando.length === 0) break
+    }
 
-      /*
-       * Time cheio: o jogador prioritário entra e uma tampinha escolhe quem
-       * sai entre os ocupantes que já estavam naquele time. Quem entrou pela
-       * prioridade desta mesma normalização fica protegido.
-       */
-      const candidatos = linhasDestino.filter(
-        (m) => !protegidosNoDestino.has(m.jogadorId),
+    const linhasCheias = destino.membros.filter((m) => m.funcao === 'LINHA')
+    if (linhasCheias.length < quantidadeLinha || loteEntrando.length === 0) {
+      continue
+    }
+
+    /*
+     * O lote nunca precisa retirar mais atletas do que a capacidade do time.
+     * Se houver um lote maior (por configuração/dado legado), consome somente
+     * a capacidade nesta formação e o restante continua para a próxima.
+     */
+    const quantidadeTrocas = Math.min(
+      loteEntrando.length,
+      linhasOriginais.length,
+    )
+    const entrandoNesteTime = loteEntrando.splice(0, quantidadeTrocas)
+
+    // UMA tampinha somente entre quem já ocupava este time antes do lote chegar.
+    const numeros = sortearNumerosUnicos(
+      Math.max(totalParticipantes, linhasOriginais.length),
+      linhasOriginais.length,
+    )
+    const pares = linhasOriginais.map((membro, posicao) => ({
+      jogadorId: membro.jogadorId,
+      numero: numeros[posicao],
+    }))
+
+    const ordenadosParaSaida = [...pares].sort((a, b) =>
+      menorNumeroSai ? a.numero - b.numero : b.numero - a.numero,
+    )
+    const escolhidosParaSair = ordenadosParaSaida.slice(0, quantidadeTrocas)
+    const idsSaindo = escolhidosParaSair.map((item) => item.jogadorId)
+
+    /*
+     * Substitui exatamente os sorteados. Quem venceu a tampinha permanece.
+     * A associação entrando/saindo é determinística apenas para persistir o
+     * histórico; esportivamente a decisão é o conjunto de números do sorteio.
+     */
+    for (let troca = 0; troca < quantidadeTrocas; troca += 1) {
+      const jogadorSaindoId = idsSaindo[troca]
+      const jogadorEntrandoId = entrandoNesteTime[troca]
+      const posicaoSaindo = destino.membros.findIndex(
+        (m) => m.funcao === 'LINHA' && m.jogadorId === jogadorSaindoId,
       )
-
-      if (candidatos.length === 0) {
+      if (posicaoSaindo < 0) {
         throw new Error(
-          'Não existem jogadores elegíveis para a tampinha desta formação.',
+          'Jogador sorteado para sair não foi encontrado na formação.',
         )
       }
 
-      const numeros = sortearNumerosUnicos(
-        Math.max(totalParticipantes, candidatos.length),
-        candidatos.length,
-      )
-      const pares = candidatos.map((membro, posicao) => ({
-        jogadorId: membro.jogadorId,
-        numero: numeros[posicao],
-      }))
-      const escolhido = [...pares].sort((a, b) =>
-        menorNumeroSai ? a.numero - b.numero : b.numero - a.numero,
-      )[0]
-
-      const posicaoSaindo = destino.membros.findIndex(
-        (m) => m.funcao === 'LINHA' && m.jogadorId === escolhido.jogadorId,
-      )
-      if (posicaoSaindo < 0) {
-        throw new Error('Jogador sorteado para sair não foi encontrado na formação.')
-      }
-
-      const jogadorSaindoId = destino.membros[posicaoSaindo].jogadorId
       destino.membros[posicaoSaindo] = {
-        jogadorId: entrandoId,
+        jogadorId: jogadorEntrandoId,
         funcao: 'LINHA',
         ordem: destino.membros[posicaoSaindo].ordem,
       }
@@ -2772,47 +2738,46 @@ export async function normalizarFilaOperacionalV13(
       const grupoRegistro =
         destino.formacao.grupoHistorico ?? destino.formacao.ordem
 
-      const registro: TampinhaSubstituicaoDB = {
+      cascata.push({
         sessaoId,
         grupo: grupoRegistro,
-        jogadorEntrandoId: entrandoId,
+        jogadorEntrandoId,
         jogadorSaindoId,
+        // Os registros do mesmo time compartilham o MESMO sorteio.
         numeros: pares,
         menorNumeroSai,
         criadoEm: agora,
-      }
-      cascata.push(registro)
-
-      protegidosNoDestino.add(entrandoId)
-      entrandoId = jogadorSaindoId
-      protegidosNoDestino = new Set<number>()
-    }
-
-    /*
-     * Se atravessou todos os times cheios, a sobra vira a ÚLTIMA formação.
-     * Não usamos grupo histórico como identidade para decidir a posição.
-     */
-    if (entrandoId !== -1) {
-      trabalho.push({
-        formacao: {
-          sessaoId,
-          ordem: trabalho.length + 1,
-          status: 'AGUARDANDO',
-          prioridade: 'RETORNO',
-          criadoEm: agora,
-          atualizadoEm: agora,
-        },
-        membros: [
-          {
-            jogadorId: entrandoId,
-            funcao: 'LINHA',
-            ordem: 1,
-          },
-        ],
       })
     }
 
-    indiceDestinoInicial = indiceParcial + 1
+    /*
+     * Os deslocados seguem JUNTOS. Se havia sobra do lote original maior que a
+     * capacidade, ela mantém prioridade e vem antes dos recém-deslocados.
+     */
+    loteEntrando = [...loteEntrando, ...idsSaindo]
+  }
+
+  /*
+   * Se o bloco atravessou todas as formações, ele vira UMA OU MAIS formações
+   * no fim da fila, sempre respeitando `quantidadeLinha`.
+   */
+  while (loteEntrando.length > 0) {
+    const membrosNovoTime = loteEntrando.splice(0, quantidadeLinha)
+    trabalho.push({
+      formacao: {
+        sessaoId,
+        ordem: trabalho.length + 1,
+        status: 'AGUARDANDO',
+        prioridade: 'RETORNO',
+        criadoEm: agora,
+        atualizadoEm: agora,
+      },
+      membros: membrosNovoTime.map((jogadorId, posicao) => ({
+        jogadorId,
+        funcao: 'LINHA' as const,
+        ordem: posicao + 1,
+      })),
+    })
   }
 
   // Remove formações sem jogadores de linha e sem goleiro.
