@@ -11,7 +11,6 @@ import {
   finalizarPartida,
   iniciarPrimeiraPartida,
   iniciarProximaPartida,
-  iniciarProximaPartidaAposEmpateComPermanencia,
   iniciarPartidaComDoisTimesAposEmpate,
   listarFilaOperacional,
   listarFormacoesFilaOperacional,
@@ -1866,10 +1865,6 @@ export default function NovaPelada() {
      * - se não tem, o goleiro do time perdedor continua e completa o time que entra.
      */
     const goleiroId = goleiroProprioId ?? timePerdedor.goleiroId
-    const origemGoleiro = goleiroProprioId
-      ? `Goleiro #${numeroGrupo} da fila`
-      : 'Goleiro do time perdedor permanece'
-
     const vencedor = atual.times.find(
       (time) => time.lado === partida.ladoVencedor,
     )
