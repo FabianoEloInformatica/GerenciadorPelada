@@ -2263,6 +2263,61 @@ export async function reconstruirFormacoesOperacionaisV13(
     partidaAtual?.jogadores.map((jogador) => jogador.jogadorId) ?? [],
   )
 
+  /*
+   * CORREÇÃO DE PRIORIDADE DOS ATRASADOS
+   * CHEGADA_ATRASADA vale somente enquanto o atleta ainda não jogou.
+   * O histórico oficial de partida_jogadores corrige inclusive sessões já abertas.
+   */
+  const partidasDaSessao = await db.getAllFromIndex(
+    'partidas',
+    'por-sessao',
+    sessaoId,
+  )
+  const idsQueJaJogaram = new Set<number>()
+
+  for (const partida of partidasDaSessao) {
+    if (!partida.id) continue
+    const jogadoresDaPartida = await db.getAllFromIndex(
+      'partida_jogadores',
+      'por-partida',
+      partida.id,
+    )
+    jogadoresDaPartida.forEach((jogador) =>
+      idsQueJaJogaram.add(jogador.jogadorId),
+    )
+  }
+
+  let maiorOrdemRetorno = filaOriginal
+    .filter((item) => item.prioridade === 'RETORNO')
+    .reduce((maior, item) => Math.max(maior, item.ordem), 0)
+
+  const atrasadosQueJaJogaram = filaOriginal
+    .filter(
+      (item) =>
+        item.prioridade === 'CHEGADA_ATRASADA' &&
+        idsQueJaJogaram.has(item.jogadorId) &&
+        !idsEmQuadra.has(item.jogadorId),
+    )
+    .sort((a, b) => {
+      if (a.ordem !== b.ordem) return a.ordem - b.ordem
+      return (a.id ?? 0) - (b.id ?? 0)
+    })
+
+  if (atrasadosQueJaJogaram.length > 0) {
+    const txPrioridade = db.transaction('fila_operacional', 'readwrite')
+    const filaPrioridade = txPrioridade.objectStore('fila_operacional')
+
+    for (const item of atrasadosQueJaJogaram) {
+      maiorOrdemRetorno += 1
+      item.prioridade = 'RETORNO'
+      item.ordem = maiorOrdemRetorno
+      item.atualizadoEm = agora
+      await filaPrioridade.put(item)
+    }
+
+    await txPrioridade.done
+  }
+
   const pesoPrioridade = (prioridade: PrioridadeFilaOperacional) =>
     PESO_PRIORIDADE_FILA[prioridade]
 
